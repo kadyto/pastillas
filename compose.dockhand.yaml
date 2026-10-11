@@ -11,7 +11,7 @@ services:
         LABEL org.opencontainers.image.title="Pastillas" \
               org.opencontainers.image.description="Medicamentos, tomas, recetas y existencias en tu servidor" \
               org.opencontainers.image.source="https://github.com/kadyto/pastillas" \
-              org.opencontainers.image.version="0.1.0"
+              org.opencontainers.image.version="0.1.1"
 
         ENV PYTHONDONTWRITEBYTECODE=1 \
             PYTHONUNBUFFERED=1 \
@@ -38,7 +38,7 @@ services:
       DATABASE_PATH: /data/pastillas.sqlite
       INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Define tu usuario inicial}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Define una contraseña de al menos 12 caracteres}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
       NTFY_BASE_URL: ${NTFY_BASE_URL:-https://ntfy.sh}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
       TZ: Europe/Madrid

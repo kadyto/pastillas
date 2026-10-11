@@ -18,7 +18,7 @@ El mismo método que en [Listasdelacompra](https://github.com/kadyto/Listasdelac
 
 Instrucciones, proxy HTTPS y actualizaciones: **[guía de Dockhand](docs/dockhand.md)**.
 
-Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fija ni una variable `PUBLIC_URL` que configurar. Con HTTPS, activa `COOKIE_SECURE=true`.
+Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fija ni una variable `PUBLIC_URL` que configurar. `COOKIE_SECURE=auto` detecta HTTPS a través de Nginx Proxy Manager y también permite el acceso HTTP directo. [Configuración del proxy](docs/dockhand.md#nginx-proxy-manager).
 
 ## Qué puedes hacer
 

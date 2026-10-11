@@ -10,7 +10,6 @@ import signal
 import sqlite3
 import threading
 import time
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -61,22 +60,22 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def cookie(self, token=""):
-        value = f"pastillas_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={604800 if token else 0}"
-        if os.environ.get("COOKIE_SECURE", "false").lower() == "true":
+        value = f"pastillas_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={604800 if token else 0}"
+        mode = os.environ.get("COOKIE_SECURE", "auto").strip().lower()
+        forwarded_https = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower() == "https"
+        if mode == "true" or (mode == "auto" and forwarded_https):
             value += "; Secure"
         return {"Set-Cookie": value}
 
+    def session_tokens(self):
+        return auth.session_tokens(self.headers.get_all("Cookie", []))
+
     def user(self, db):
-        cookie = SimpleCookie()
-        try:
-            cookie.load(self.headers.get("Cookie", ""))
-        except Exception:
-            pass
-        token = cookie.get("pastillas_session")
-        result = auth.current_user(db, token.value if token else "")
-        if not result:
-            raise Unauthorized("Inicia sesión para continuar.")
-        return result
+        for token in self.session_tokens():
+            result = auth.current_user(db, token)
+            if result:
+                return result
+        raise Unauthorized("Inicia sesión para continuar.")
 
     def body(self):
         if self.headers.get("Content-Type", "").split(";")[0].lower() != "application/json":
@@ -180,10 +179,8 @@ class Handler(BaseHTTPRequestHandler):
         elif method == "GET":
             db.execute("BEGIN")
         if path == "/api/logout" and method == "POST":
-            cookie = SimpleCookie(self.headers.get("Cookie", ""))
-            token = cookie.get("pastillas_session")
-            if token:
-                db.execute("DELETE FROM sessions WHERE token=?", (hashlib.sha256(token.value.encode()).hexdigest(),))
+            for token in self.session_tokens():
+                db.execute("DELETE FROM sessions WHERE token=? AND user_id=?", (hashlib.sha256(token.encode()).hexdigest(), user["id"]))
             db.commit()
             return self.send(200, dict(ok=True), headers=self.cookie())
         if path == "/api/dashboard" and method == "GET":

@@ -65,6 +65,20 @@ jobs:
             sleep 1
           done
           PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome TEST_BASE_URL=http://127.0.0.1:8093 node tests/browser_smoke.cjs
+      - name: Verify sessions through an HTTP and HTTPS Nginx proxy
+        run: |
+          mkdir -p /tmp/pastillas-proxy-certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout /tmp/pastillas-proxy-certs/key.pem -out /tmp/pastillas-proxy-certs/cert.pem
+          trap 'docker rm -fv pastillas-proxy-nginx pastillas-proxy-backend; docker network rm pastillas-proxy-check' EXIT
+          docker network create pastillas-proxy-check
+          docker run -d --name pastillas-proxy-backend --network pastillas-proxy-check -v /data --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=32m -e INITIAL_ADMIN_USER=proxy-test -e INITIAL_ADMIN_PASSWORD=contrasena-proxy-123 -e COOKIE_SECURE=auto -p 127.0.0.1:8095:8000 pastillas:test
+          docker run -d --name pastillas-proxy-nginx --network pastillas-proxy-check -v "$PWD/tests/nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro" -v /tmp/pastillas-proxy-certs:/etc/nginx/certs:ro -p 127.0.0.1:8096:80 -p 127.0.0.1:8444:443 -p 127.0.0.1:8445:444 nginx:1.28-alpine
+          for attempt in $(seq 1 30); do
+            if curl -fsS --cacert /tmp/pastillas-proxy-certs/cert.pem https://127.0.0.1:8444/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS --cacert /tmp/pastillas-proxy-certs/cert.pem https://127.0.0.1:8444/healthz
+          PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome node tests/proxy_smoke.cjs
       - name: Save browser screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.2

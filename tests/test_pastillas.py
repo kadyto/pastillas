@@ -313,7 +313,7 @@ class AuthenticationAndApiTests(DatabaseTests):
         self.assertEqual(response[0],200)
         cookie=response[2]['Set-Cookie']
         self.assertIn('HttpOnly',cookie)
-        self.assertIn('SameSite=Strict',cookie)
+        self.assertIn('SameSite=Lax',cookie)
         token=cookie.split(';')[0].split('=')[1]
         response=self.request('/api/password','PUT',dict(current_password='contrasena-larga-123',password='nueva-contrasena-123'),token)
         self.assertIsNone(auth.current_user(self.db,token))

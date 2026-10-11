@@ -24,7 +24,7 @@ En Dockhand: **Stacks → New Stack → pastillas**. Pega el contenido íntegro 
 | `APP_UID` / `APP_GID` | Propietario de la carpeta; por defecto 10001 / 10001 |
 | `APP_PORT` | Puerto disponible, por defecto 8092 |
 | `BIND_ADDRESS` | Por defecto 0.0.0.0, accesible por la red local; 127.0.0.1 para proxy local |
-| `COOKIE_SECURE` | `false` para HTTP privado; `true` cuando accedas únicamente por HTTPS |
+| `COOKIE_SECURE` | `auto` por defecto: HTTPS a través del proxy usa una cookie segura; HTTP directo también funciona. `true` obliga a HTTPS; `false` conserva el comportamiento anterior |
 | `NTFY_BASE_URL` | Por defecto `https://ntfy.sh`; cambia a tu servidor ntfy si lo tienes |
 | `NTFY_TOKEN` | Opcional, token de publicación de un servidor ntfy con autenticación |
 
@@ -38,9 +38,19 @@ También puedes indicar un origen Git en Dockhand: repositorio `https://github.c
 
 ## HTTPS
 
-Configura tu proxy inverso para apuntar a `8000` dentro del contenedor o al `APP_PORT` del host. La aplicación se sirve en la raíz del dominio, sin prefijo de ruta. Puedes usar cualquier dominio, IP o puerto, y el proxy puede reescribir `Host`: no necesitas configurar una URL pública. Con HTTPS, utiliza `COOKIE_SECURE=true`. Con HTTP y cookies seguras activadas no podrás mantener la sesión.
+Configura tu proxy inverso para apuntar a `8000` dentro del contenedor o al `APP_PORT` del host. La aplicación se sirve en la raíz del dominio, sin prefijo de ruta. Puedes usar cualquier dominio, IP o puerto, y el proxy puede reescribir `Host`: no necesitas configurar una URL pública. Con `COOKIE_SECURE=auto`, el encabezado `X-Forwarded-Proto` del proxy determina si la cookie lleva `Secure`. Con `true` y acceso HTTP no podrás mantener la sesión.
 
 `PUBLIC_URL` ya no se utiliza. Si la conservas en las variables de un stack anterior, no impone restricciones. La interfaz utiliza peticiones relativas a la dirección desde la que la abres; no se necesita CORS para usarla desde dominios distintos. Cada dirección mantiene su propia sesión de navegador.
+
+### Nginx Proxy Manager
+
+En el Proxy Host, elige el esquema **http** hacia el contenedor, con su IP/nombre y el puerto del servicio. Activa el certificado y HTTPS en la pestaña SSL para el acceso exterior. Nginx Proxy Manager envía `X-Forwarded-Proto` automáticamente; `COOKIE_SECURE=auto` funciona tanto por ese HTTPS como al entrar directamente por HTTP.
+
+No necesitas reglas en Advanced para las cookies. Conserva los encabezados `Cookie` y `Set-Cookie` y deja las rutas `/api/` fuera de cualquier caché personalizada. Las cookies son del host desde el que accedes, con `HttpOnly`, `SameSite=Lax` y sin un dominio fijado por la aplicación.
+
+Desde la versión 0.1.1, las cookies de otras aplicaciones no invalidan la lectura de la sesión de Pastillas. También se tolera una cookie de sesión antigua con otra ruta si existe una sesión válida. Si el login acepta la contraseña pero no se conserva la cookie, la interfaz muestra un mensaje específico.
+
+Para actualizar un stack existente, conserva sus datos y volumen y reconstruye la imagen. Puedes cambiar `COOKIE_SECURE` a `auto`; la aplicación sigue respetando los valores explícitos `true` y `false`. Comprueba que el pie de la app muestre 0.1.1 después de reconstruir.
 
 ## Actualizar
 

@@ -45,6 +45,22 @@ def current_user(db, token):
                       (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
 
 
+def session_tokens(cookie_headers):
+    """Lee solo nuestra cookie: valores ajenos no deben invalidar una sesión."""
+    result = []
+    for header in cookie_headers:
+        for fragment in header.split(";"):
+            name, separator, value = fragment.strip().partition("=")
+            if separator and name == "pastillas_session":
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] == '"':
+                    value = value[1:-1]
+                # Los tokens se generan con token_urlsafe(32), sin interpretar datos de otras apps.
+                if re.fullmatch(r"[A-Za-z0-9_-]{43}", value) and value not in result:
+                    result.append(value)
+    return result
+
+
 def public_user(row):
     return {k: row[k] for k in ("id", "username", "admin", "timezone", "ntfy_topic", "ntfy_enabled", "stock_alerts", "prescription_alerts")}
 

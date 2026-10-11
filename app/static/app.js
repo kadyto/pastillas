@@ -53,24 +53,28 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => $('#toast').className = '', 6000);
 }
 async function api(path, method = 'GET', body) {
-  const response = await fetch(`/api${path}`, {method, credentials:'same-origin', headers: method === 'GET' ? {} : {'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(body || {})});
+  const response = await fetch(`/api${path}`, {method, credentials:'same-origin', cache:'no-store', headers: method === 'GET' ? {} : {'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(body || {})});
   let data;
   try { data = await response.json(); } catch { throw new Error('El servidor no responde correctamente. Revisa la conexión.'); }
   if (!response.ok) {
-    if (response.status === 401 && !['/login','/setup'].includes(path)) { state.user = null; state.data = null; state.alerts = []; if (dialog.open) dialog.close(); renderLogin(); }
+    if (response.status === 401 && !['/login','/setup'].includes(path)) { const wasLoggedIn=!!state.user; state.user = null; state.data = null; state.alerts = []; if (dialog.open) dialog.close(); if(wasLoggedIn)renderLogin('La sesión no se ha podido mantener. Si acabas de entrar, revisa las cookies del navegador y la configuración del proxy.'); }
     throw new Error(data.error || 'No se pudo completar la operación.');
   }
   return data;
 }
 const empty = (title, message, action = '', label = '') => `<div class="empty"><div class="empty-icon">${icon('pill',30)}</div><h2>${title}</h2><p>${message}</p>${action ? button(action,label,'plus','','primary') : ''}</div>`;
-function renderLogin() {
+function renderLogin(message = '') {
   app.innerHTML = `<main class="login-shell" id="content"><div class="login-card"><a class="brand" href="/"> <img src="/icon.svg" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><h1>${state.setup ? 'Empezamos contigo' : 'Bienvenido a tu botiquín'}</h1><p>${state.setup ? 'Crea tu cuenta administradora para organizar medicamentos, tomas y existencias.' : 'Todo lo que necesitas para seguir tu tratamiento, en un solo lugar.'}</p><div class="error-box" id="login-error" role="alert"></div><form id="login-form"><label>Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="60"></label><label>Contraseña<input type="password" name="password" autocomplete="${state.setup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"><small>Al menos 12 caracteres.</small></label><button class="button primary" type="submit">${state.setup ? 'Crear mi cuenta' : 'Entrar'}${icon('arrow',17)}</button></form><p class="help">Tus datos se guardan en tu servidor.<br>Pastillas ${esc(state.version)}</p></div></main>`;
+  $('#login-error').textContent = message;
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, submit = $('button', form);
     submit.disabled = true; $('#login-error').textContent = '';
     try {
       state.user = await api(state.setup ? '/setup' : '/login', 'POST', Object.fromEntries(new FormData(form)));
+      state.setup = false;
+      const session = await api('/session');
+      if(!session.user){state.user=null;const message='La contraseña es correcta, pero el navegador no conserva la sesión. Revisa las cookies y que el proxy transmita Cookie y Set-Cookie.';renderLogin(message);throw new Error(message);}
       state.setup = false; state.day = ''; state.search = ''; state.data = null; notificationIds = new Set(); location.hash = 'today';
       await refresh();
     } catch (error) { $('#login-error')?.replaceChildren(document.createTextNode(error.message)); submit.disabled = false; }
