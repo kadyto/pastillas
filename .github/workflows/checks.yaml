@@ -6,15 +6,16 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - run: python -m unittest discover -s tests -v
       - run: node --check app/static/app.js
       - run: node --check app/static/sw.js
@@ -66,7 +67,7 @@ jobs:
           PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome TEST_BASE_URL=http://127.0.0.1:8093 node tests/browser_smoke.cjs
       - name: Save browser screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: pastillas-preview
           path: test-results/*.png
