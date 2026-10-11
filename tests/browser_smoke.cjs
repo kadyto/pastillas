@@ -2,11 +2,14 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+let activePage, activeBrowser;
 
 (async () => {
   const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined, headless:true, args:['--no-sandbox']});
+  activeBrowser=browser;
   const context = await browser.newContext({viewport:{width:1440,height:1050},locale:'es-ES',timezoneId:'Europe/Madrid'});
   const page = await context.newPage();
+  activePage=page;
   const saved = async () => {
     await page.locator('dialog').waitFor({state:'hidden'});
     await page.waitForFunction(() => document.getElementById('toast').classList.contains('visible') && document.getElementById('toast').textContent === 'Guardado');
@@ -135,8 +138,9 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
   await page.locator('nav').getByRole('link',{name:'Ajustes',exact:true}).click();
   await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
-  await page.getByLabel('Usuario',{exact:true}).fill('qa-otro');
-  await page.getByLabel('Contraseña').fill('otra-cuenta-prueba-123');
+  await page.locator('#login-form').waitFor({state:'visible'});
+  await page.locator('#login-form input[name=username]').fill('qa-otro');
+  await page.locator('#login-form input[name=password]').fill('otra-cuenta-prueba-123');
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
   data=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
@@ -145,4 +149,13 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.deepEqual(errors,[]);
   await browser.close();
   console.log('Navegador OK: recetas, pautas, tomas, compras, correcciones, historial, exportación, móvil, tema e aislamiento de usuarios.');
-})().catch(error=>{console.error(error);process.exit(1);});
+})().catch(async error=>{
+  console.error(error);
+  if(activePage){
+    console.error(await activePage.evaluate(()=>({heading:document.querySelector('main h1')?.textContent,toast:document.getElementById('toast')?.textContent,login:!!document.getElementById('login-form'),dialog:document.querySelector('dialog')?.open})).catch(()=>({})));
+    fs.mkdirSync('test-results',{recursive:true});
+    await activePage.screenshot({path:'test-results/fallo.png',fullPage:true}).catch(()=>{});
+  }
+  await activeBrowser?.close().catch(()=>{});
+  process.exit(1);
+});
