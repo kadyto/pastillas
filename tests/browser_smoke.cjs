@@ -13,7 +13,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.goto(base);
   await page.getByRole('heading',{name:'Empezamos contigo'}).waitFor();
   await page.getByLabel('Usuario',{exact:true}).fill('qa-admin');
-  await page.getByLabel('Contraseña',{exact:true}).fill('solo-para-pruebas-123');
+  await page.getByLabel('Contraseña').fill('solo-para-pruebas-123');
   await page.getByRole('button',{name:'Crear mi cuenta'}).click();
   await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
 
@@ -29,7 +29,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('dialog').waitFor({state:'hidden'});
 
   await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
-  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).first().click();
   await page.getByLabel('Nombre del medicamento').fill('Medicación habitual');
   await page.getByLabel('Marca').fill('Mi marca');
   await page.getByLabel('Concentración o dosis del envase').fill('Según mi receta');
@@ -77,9 +77,9 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('dialog').waitFor({state:'hidden'});
   assert.ok((await page.locator('.med-card').textContent()).includes('08:00 · 20:00'));
 
-  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).first().click();
   await page.getByLabel('Nombre del medicamento').fill('Jarabe de mi tratamiento');
-  await page.getByLabel('Presentación',{exact:true}).fill('Jarabe');
+  await page.getByLabel('Presentación').fill('Jarabe');
   await page.getByLabel('Unidad de existencias').fill('ml');
   await page.getByLabel('Cantidad por toma').fill('5');
   await page.getByLabel('Existencias que tienes ahora').fill('100');
@@ -131,7 +131,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('nav').getByRole('link',{name:'Ajustes',exact:true}).click();
   await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
   await page.getByLabel('Usuario',{exact:true}).fill('qa-otro');
-  await page.getByLabel('Contraseña',{exact:true}).fill('otra-cuenta-prueba-123');
+  await page.getByLabel('Contraseña').fill('otra-cuenta-prueba-123');
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
   data=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));

@@ -37,3 +37,14 @@ jobs:
           curl -fsS http://127.0.0.1:8092/healthz
           curl -fsS http://127.0.0.1:8092/ | head -c 300
           docker rm -fv pastillas-ci
+      - name: Browser smoke test
+        run: |
+          npm install --prefix /tmp/pastillas-browser --no-audit --no-fund playwright-core
+          DATABASE_PATH=/tmp/pastillas-browser.sqlite HOST=127.0.0.1 PORT=8093 python -m app.server &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8093/healthz; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome TEST_BASE_URL=http://127.0.0.1:8093 node tests/browser_smoke.cjs
