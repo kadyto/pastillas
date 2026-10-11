@@ -39,7 +39,7 @@ async function login(page, base, password='contrasena-proxy-123') {
     await page.reload();
     await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
     await page.locator('nav').getByRole('link',{name:'Ajustes',exact:true}).click();
-    await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
+    await page.locator('main').getByRole('button',{name:'Cerrar sesión',exact:true}).click();
     await page.locator('#login-form').waitFor({state:'visible'});
     session=await page.evaluate(()=>fetch('/api/session',{cache:'no-store'}).then(r=>r.json()));
     assert.equal(session.user,null);
