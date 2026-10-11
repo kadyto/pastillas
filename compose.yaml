@@ -12,7 +12,6 @@ services:
       INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Define tu usuario inicial}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Define una contraseña de al menos 12 caracteres}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      PUBLIC_URL: ${PUBLIC_URL:-}
       NTFY_BASE_URL: ${NTFY_BASE_URL:-https://ntfy.sh}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
     volumes:

@@ -18,6 +18,8 @@ El mismo método que en [Listasdelacompra](https://github.com/kadyto/Listasdelac
 
 Instrucciones, proxy HTTPS y actualizaciones: **[guía de Dockhand](docs/dockhand.md)**.
 
+Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fija ni una variable `PUBLIC_URL` que configurar. Con HTTPS, activa `COOKIE_SECURE=true`.
+
 ## Qué puedes hacer
 
 - **Medicamentos libres:** nombre, marca, presentación (pastillas, gotas, jarabes, cápsulas, cremas…), concentración del envase e indicaciones.

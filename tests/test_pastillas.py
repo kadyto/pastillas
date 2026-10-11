@@ -252,13 +252,14 @@ class AlertTests(DatabaseTests):
 
 
 class AuthenticationAndApiTests(DatabaseTests):
-    def request(self,path,method="GET",data=None,token=None,origin="http://localhost:8000"):
+    def request(self,path,method="GET",data=None,token=None,origin="http://localhost:8000",host="localhost:8000",fetch_site="same-origin"):
         handler=Handler.__new__(Handler)
         handler.command=method
         handler.client_address=("127.0.0.1",1234)
         handler.headers=Message()
-        handler.headers['Host']='localhost:8000'
+        handler.headers['Host']=host
         handler.headers['Origin']=origin
+        handler.headers['Sec-Fetch-Site']=fetch_site
         if token:handler.headers['Cookie']=f"pastillas_session={token}"
         encoded=json.dumps(data or {}).encode()
         handler.headers['Content-Type']='application/json'
@@ -286,7 +287,18 @@ class AuthenticationAndApiTests(DatabaseTests):
 
     def test_api_requires_login_and_rejects_cross_site_posts(self):
         with self.assertRaises(Unauthorized):self.request('/api/dashboard')
-        with self.assertRaises(Forbidden):self.request('/api/medications','POST',{},self.token(),origin='https://otro-sitio.example')
+        with self.assertRaises(Forbidden):self.request('/api/medications','POST',{},self.token(),origin='https://otro-sitio.example',fetch_site='cross-site')
+
+    def test_any_public_domain_ip_and_proxy_host_work_without_configuration(self):
+        token=self.token()
+        body=dict(timezone='Europe/Madrid',ntfy_topic=self.user['ntfy_topic'],ntfy_enabled=False,stock_alerts=True,prescription_alerts=True)
+        # Una variable antigua tampoco vuelve a imponer restricciones a una instalación actualizada.
+        with patch.dict(os.environ, {'PUBLIC_URL':'https://antiguo.example'}):
+            for origin,host in [('https://pastillas.example','pastillas.example'),
+                                ('http://192.168.1.25:8092','192.168.1.25:8092'),
+                                ('https://otro-dominio.example','127.0.0.1:8000')]:
+                response=self.request('/api/settings','PUT',body,token,origin=origin,host=host)
+                self.assertEqual(response[0],200)
 
     def test_only_admin_can_create_users(self):
         token=self.token(self.other_id)

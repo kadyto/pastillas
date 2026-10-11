@@ -87,17 +87,8 @@ class Handler(BaseHTTPRequestHandler):
             raise Invalid("Tamaño de petición no válido.") from None
         if length < 0 or length > MAX_BODY:
             raise Invalid("La petición es demasiado grande.")
-        # SameSite + JSON + comprobación del origen. PUBLIC_URL permite proxy inverso.
-        origin = self.headers.get("Origin")
-        expected = os.environ.get("PUBLIC_URL", "").rstrip("/")
-        if origin:
-            parsed = urlsplit(origin)
-            if expected:
-                valid = origin == expected
-            else:
-                valid = parsed.scheme in ("http", "https") and parsed.netloc == self.headers.get("Host") and not parsed.path
-            if not valid:
-                raise Forbidden("El origen no está permitido. Revisa PUBLIC_URL en el servidor.")
+        # Sin dominio canónico: cada acceso usa su propia URL, también detrás de un proxy.
+        # JSON, SameSite y Fetch Metadata protegen las operaciones sin listas de dominios.
         if self.headers.get("Sec-Fetch-Site") == "cross-site":
             raise Forbidden("Petición de otro sitio bloqueada.")
         try:
