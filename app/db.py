@@ -55,7 +55,22 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS med_owner ON medications(user_id);
 CREATE INDEX IF NOT EXISTS dose_time ON doses(medication_id, scheduled_at);
 CREATE INDEX IF NOT EXISTS alert_owner ON alerts(user_id, created_at);
-PRAGMA user_version = 1;
+CREATE TABLE IF NOT EXISTS medicine_links (
+ medication_id INTEGER PRIMARY KEY REFERENCES medications(id) ON DELETE CASCADE,
+ vademecum_url TEXT NOT NULL DEFAULT '', nregistro TEXT NOT NULL,
+ cn TEXT NOT NULL DEFAULT '', cima_name TEXT NOT NULL, presentation_name TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS medicine_cache (
+ cache_key TEXT PRIMARY KEY, data TEXT NOT NULL DEFAULT '{}',
+ attempted_at INTEGER NOT NULL DEFAULT 0, checked_at INTEGER NOT NULL DEFAULT 0,
+ expires_at INTEGER NOT NULL DEFAULT 0, pending INTEGER NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS medicine_notice_seen (
+ medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
+ notice_key TEXT NOT NULL, PRIMARY KEY(medication_id,notice_key)
+);
+PRAGMA user_version = 2;
 """
 
 
@@ -119,8 +134,15 @@ def initialize(path=None):
         with connect(path) as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError("La base de datos pertenece a una versión más reciente.")
+            if version == 1 and str(path) != ':memory:':
+                # Copia consistente incluso con WAL, antes de la primera migración.
+                backup_path = str(path) + '.pre-v2.sqlite'
+                if not Path(backup_path).exists():
+                    with sqlite3.connect(backup_path) as backup:
+                        db.backup(backup)
+                    os.chmod(backup_path, 0o600)
             db.executescript(SCHEMA)
     except sqlite3.OperationalError as error:
         raise StorageError(storage_message(path, str(error))) from error

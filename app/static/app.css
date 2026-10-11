@@ -9,3 +9,31 @@ dialog{color:var(--text);background:var(--surface);border:1px solid var(--line);
 @media(max-width:600px){.sidebar{inset:auto 0 0;width:100%;height:76px;padding:0;background:var(--surface);border-right:0;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}.sidebar>.brand,.sidebar-bottom{display:none}.sidebar nav{display:flex;justify-content:space-around;gap:0;margin:0;height:100%}.nav-link{flex-direction:column;gap:5px;flex:1;padding:10px 2px 8px;border-radius:0;font-size:.59rem;line-height:1.3;min-height:60px}.nav-link svg{width:21px;height:21px}.nav-link[aria-current]{background:var(--surface);position:relative}.nav-link[aria-current]:before{content:"";position:absolute;top:0;left:25%;width:50%;height:3px;background:var(--primary);border-radius:0 0 3px 3px}.main{margin-left:0;padding:22px 18px 105px}.topbar{margin-bottom:27px}.breadcrumb,.username,.avatar{display:none}.mobile-brand{display:flex;align-items:center;gap:9px;font-weight:740;font-size:1.22rem;letter-spacing:-.5px}.mobile-brand img{width:34px;height:34px}.top-actions{gap:7px}.icon-button{width:36px;height:36px}.heading{gap:15px;align-items:start;margin-bottom:23px}.heading h1{font-size:1.85rem}.heading p{font-size:.8rem;max-width:280px}.heading>.button{padding:10px 12px;font-size:.75rem;min-height:42px;margin-top:2px}.heading>.button svg{width:17px;height:17px}.hero{padding:23px 21px;border-radius:14px}.hero h2{font-size:1.32rem}.hero p{font-size:.76rem}.hero-art{min-width:70px;width:75px}.pill-illustration{width:33px;height:74px;border-width:1px}.hero-art>div:last-child{display:none}.hero-art:before{width:90px;height:90px}.stats{gap:11px;margin-bottom:25px}.stat{padding:16px}.stat strong{font-size:1.55rem}.stat-top{font-size:.7rem}.stat-top svg{width:17px;height:17px}.stat small{font-size:.64rem}.home-columns{gap:25px}.section-title{flex-wrap:wrap;gap:13px}.section-title h2{font-size:1.09rem}.dose-row{flex-wrap:wrap;padding:17px 15px;gap:12px}.dose-time{font-size:.98rem;width:48px}.dose-body h3{font-size:.96rem}.dose-body p{font-size:.74rem}.dose-actions{margin-left:60px;width:calc(100% - 60px)}.dose-actions .primary{flex:1}.dose-actions .status{margin-right:auto}.dose-row.taken .dose-actions,.dose-row.skipped .dose-actions{margin-top:-2px}.dose-row .instruction{font-size:.69rem}.day-control{margin-left:auto}.day-control input{width:139px}.tabs{max-width:100%}.tabs button{font-size:.73rem;padding:8px 12px}.med-card{padding:20px}.med-top h3{font-size:1.02rem}.med-facts{gap:12px}.card-actions{gap:7px}.card-actions .button{padding:9px 11px}.inventory-row{padding:19px;gap:16px}.inventory-stock{min-width:100px;text-align:right}.inventory-forecast{flex-basis:45%}.inventory-row .button{margin-left:auto}.inventory-name{flex-basis:50%}.settings-grid .panel{padding:21px}.form-grid{gap:17px 12px}.form-grid>.mobile-full{grid-column:1/-1}.login-shell{padding:20px}.login-card{padding:28px 24px}.dialog-header{padding:19px 20px}.dialog-body{padding:21px 20px}dialog{max-height:92dvh;width:calc(100% - 20px);border-radius:15px}#toast{left:50%;bottom:90px;width:max-content;max-width:calc(100% - 32px)}.footer-note{font-size:.67rem}.empty{padding:35px 20px}.empty p{font-size:.8rem}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 @media(max-width:600px){.heading{flex-wrap:wrap}.heading>div{min-width:0;flex:1 1 210px}.heading>.button{flex:0 1 auto}}
+
+/* Información oficial del medicamento */
+.medicine-picker {margin-bottom:1.5rem}
+.medicine-picker .picker-actions {margin:.7rem 0}
+.picker-actions,.info-tabs {display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1rem 0}
+.medicine-results {display:grid;gap:.5rem;max-height:22rem;overflow:auto}
+.medicine-result {display:grid;gap:.25rem;width:100%;text-align:left;padding:1rem;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;white-space:normal}
+.medicine-result:hover {border-color:var(--primary)}
+.medicine-result small {color:var(--muted)}
+.medicine-badge {display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted);margin:1rem 0;flex-wrap:wrap}
+.medicine-warning {color:var(--amber)}
+.medicine-banner {border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:12px;padding:1rem 1.2rem;margin-bottom:1.5rem;background:var(--surface);font-size:.88rem}
+.medicine-banner strong {display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem}
+.medicine-banner div {margin-top:.5rem}
+.medicine-banner p {margin:.5rem 0;color:var(--muted)}
+.medicine-notice {padding:1rem 0;border-bottom:1px solid var(--line)}
+.medicine-notice h4 {margin:.7rem 0;overflow-wrap:anywhere}
+#medicine-panel p {overflow-wrap:anywhere;white-space:pre-line}
+.info-tabs button[aria-pressed=true] {border-color:var(--primary);color:var(--primary)}
+.medicine-document {margin:1rem 0;overflow-wrap:anywhere}
+.medicine-document details {border:1px solid var(--line);border-radius:10px;margin:.7rem 0;overflow:hidden}
+.medicine-document summary {padding:.9rem;cursor:pointer;font-weight:600;background:var(--surface)}
+.document-section {padding:1rem;line-height:1.7;font-size:.9rem;overflow:auto}
+.document-section p {margin:.7rem 0}
+.document-section ul,.document-section ol {padding-left:1.6rem}
+.document-section table {border-collapse:collapse;max-width:100%;font-size:.83rem}
+.document-section td,.document-section th {border:1px solid var(--line);padding:.5rem;min-width:5rem;vertical-align:top}
+@media(max-width:600px) {.med-card .card-actions {flex-wrap:wrap}.med-card .card-actions .push {margin-left:0}.medicine-banner {padding:.8rem}.picker-actions .button,.info-tabs .button {max-width:100%;white-space:normal}.medicine-results {max-height:17rem}}

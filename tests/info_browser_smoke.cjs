@@ -1,0 +1,80 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+let browser,page;
+(async()=>{
+  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox']});
+  const context=await browser.newContext({viewport:{width:1440,height:1050},locale:'es-ES',timezoneId:'Europe/Madrid'});
+  page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const base=process.env.TEST_INFO_BASE_URL||'http://127.0.0.1:8097';
+  await page.goto(base);
+  await page.getByLabel('Usuario',{exact:true}).fill('info-test');
+  await page.getByLabel('Contraseña').fill('contrasena-info-prueba-123');
+  await page.getByRole('button',{name:'Crear mi cuenta'}).click();
+  await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.getByLabel('Nombre o URL de Vademécum').fill('https://www.vademecum.es/espana/medicamento/27631/omacor-1000-mg-capsulas-blandas');
+  await page.getByRole('button',{name:'Buscar medicamento',exact:true}).click();
+  await page.locator('.medicine-result').click();
+  await page.getByLabel('Envase / código nacional').selectOption('999001');
+  await page.getByRole('button',{name:'Vincular este medicamento',exact:true}).click();
+  assert.equal(await page.getByLabel('Nombre del medicamento',{exact:true}).inputValue(),'MEDICAMENTO DE PRUEBA 1000 MG CAPSULAS');
+  await page.getByLabel('Nombre del medicamento',{exact:true}).fill('Mi tratamiento');
+  await page.getByLabel('Existencias que tienes ahora').fill('28');
+  await page.getByLabel('Cantidad por toma').fill('0.5');
+  await page.getByLabel('Tipo de pauta').selectOption('as_needed');
+  await page.locator('dialog').getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.waitForFunction(async()=>{
+    const d=await fetch('/api/dashboard').then(r=>r.json());return d.medications[0]?.information?.status==='fresh';
+  });
+  await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
+  await page.getByRole('button',{name:'Información',exact:true}).click();
+  await page.getByRole('heading',{name:'AVISO SINTÉTICO: comprobar la presentación'}).waitFor();
+  await page.getByText('DESABASTECIMIENTO SINTÉTICO para pruebas',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Prospecto',exact:true}).click();
+  await page.getByText('Contenido de prueba del documento oficial.',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.injected),undefined);
+  await page.getByRole('button',{name:'Ficha técnica',exact:true}).click();
+  await page.getByText('Contenido de prueba del documento oficial.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Equivalencias',exact:true}).click();
+  assert.equal(await page.getByRole('link',{name:'Consultar equivalencias en Vademécum'}).getAttribute('href'),
+    'https://www.vademecum.es/espana/equivalencias/27631/omacor-1000-mg-capsulas-blandas');
+  await page.getByRole('button',{name:'Avisos',exact:true}).click();
+  fs.mkdirSync('test-results',{recursive:true});
+  await page.screenshot({path:'test-results/medicine-information-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'test-results/medicine-information-mobile.png',fullPage:true});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'La ficha no debe desbordar en móvil');
+  await page.getByRole('button',{name:'Editar vinculación',exact:true}).click();
+  await page.getByRole('button',{name:'Buscar medicamento',exact:true}).click();
+  await page.locator('.medicine-result').click();
+  await page.getByLabel('Envase / código nacional').selectOption('999002');
+  await page.getByRole('button',{name:'Vincular este medicamento',exact:true}).click();
+  await page.getByRole('button',{name:'Guardar cambios',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.waitForFunction(async()=>{
+    const d=await fetch('/api/dashboard').then(r=>r.json());return d.medications[0]?.information?.status==='fresh'&&d.medications[0].information.link.cn==='999002';
+  });
+  let dashboard=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  const med=dashboard.medications[0];
+  assert.equal(med.stock,28);assert.equal(med.dose,0.5);assert.equal(med.schedule,'as_needed');
+  assert.equal(med.information.data.notices.filter(n=>n.kind==='supply').length,0);
+  const attempted=med.information.attempted_at;
+  await page.reload();
+  await page.getByRole('heading',{name:'Tus medicamentos',exact:true}).waitFor();
+  dashboard=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(dashboard.medications[0].information.attempted_at,attempted);
+  const exported=await page.evaluate(()=>fetch('/api/export').then(r=>r.json()));
+  assert.equal(exported.medicine_links.length,1);
+  assert.equal(exported.medicine_links[0].cn,'999002');
+  // Otra cuenta no puede leer ni modificar el enlace o los documentos.
+  await page.evaluate(()=>fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
+  await page.evaluate(()=>fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
+  await page.evaluate(()=>fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
+  for(const [path,method] of [[`information`,'GET'],[`document?type=2`,'GET'],['information','POST'],['information','DELETE']]){
+    const code=await page.evaluate(async({url,method})=>{const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:method==='GET'?undefined:'{}'});return r.status;},{url:`/api/medications/${med.id}/${path}`,method});
+    assert.equal(code,404);
+  }
+  assert.deepEqual(errors,[]);await browser.close();console.log('Información: búsqueda URL, envase, documentos, avisos, caché, exportación y aislamiento correctos.');
+})().catch(async error=>{console.error(error);if(page){fs.mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/medicine-information-failure.png',fullPage:true}).catch(()=>{});}if(browser)await browser.close();process.exit(1);});

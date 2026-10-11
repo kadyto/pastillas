@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timedelta
 
 from .auth import credentials, hash_password, public_user
+from . import medicine_info
 from .domain import (Invalid, SCALE, boolean, date, forecast, medication_input,
                      occurrences, prescription_input, quantity, serialize_med, text, zone)
 
@@ -124,7 +125,9 @@ def medications(db, user_id, now):
     result = []
     for med in db.execute("SELECT * FROM medications WHERE user_id=? ORDER BY active DESC,name COLLATE NOCASE", (user_id,)):
         resolved = [r[0] for r in db.execute("SELECT scheduled_at FROM doses WHERE medication_id=? AND scheduled_at>=?", (med["id"], now))]
-        result.append(serialize_med(med, now, resolved))
+        item = serialize_med(med, now, resolved)
+        item['information'] = medicine_info.information(db, med['id'], now)
+        result.append(item)
     return result
 
 
@@ -189,8 +192,10 @@ def export_data(db, user):
     recipes = [dict(r) for r in db.execute("SELECT * FROM prescriptions WHERE user_id=?", (user["id"],))]
     doses = [dict(r) for r in db.execute("SELECT d.* FROM doses d JOIN medications m ON m.id=d.medication_id WHERE m.user_id=?", (user["id"],))]
     movements = [dict(r) for r in db.execute("SELECT s.* FROM stock_movements s JOIN medications m ON m.id=s.medication_id WHERE m.user_id=?", (user["id"],))]
-    return dict(format="pastillas", version=1, exported_at=int(time.time()), quantity_scale=SCALE,
-                timezone=user["timezone"], medications=meds, prescriptions=recipes, doses=doses, stock_movements=movements)
+    links = [dict(r) for r in db.execute('SELECT l.* FROM medicine_links l JOIN medications m ON m.id=l.medication_id WHERE m.user_id=?', (user['id'],))]
+    return dict(format="pastillas", version=2, exported_at=int(time.time()), quantity_scale=SCALE,
+                timezone=user["timezone"], medications=meds, prescriptions=recipes, doses=doses, stock_movements=movements,
+                medicine_links=links)
 
 
 def create_user(db, data):

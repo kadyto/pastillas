@@ -79,10 +79,22 @@ jobs:
           done
           curl -fsS --cacert /tmp/pastillas-proxy-certs/cert.pem https://127.0.0.1:8444/healthz
           PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome node tests/proxy_smoke.cjs
+      - name: Verify medicine information in the browser
+        run: |
+          DATABASE_PATH=/tmp/pastillas-info-browser.sqlite HOST=127.0.0.1 PORT=8097 python tests/info_browser_server.py &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8097/healthz; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome node tests/info_browser_smoke.cjs
+      - name: Observe public provider availability
+        run: python tests/provider_probe.py
       - name: Save browser screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
           name: pastillas-preview
-          path: test-results/*.png
+          path: test-results/*
           if-no-files-found: ignore

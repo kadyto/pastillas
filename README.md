@@ -28,6 +28,7 @@ Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fij
 - **Agenda:** consulta cualquier día; confirma, omite o deshaz una toma. Una toma confirmada descuenta sus existencias una sola vez. Las omitidas no consumen nada. No permite confirmar si falta cantidad.
 - **Existencias:** compras, precio opcional y correcciones del total contado; historial de movimientos. Previsión de la primera toma futura que no se podrá cubrir y antelación de reposición configurable por medicamento.
 - **Recetas:** referencia, profesional, indicaciones y fecha de renovación; vinculación con medicamentos y aviso desde siete días antes.
+- **Información de medicamentos:** búsqueda por nombre o URL de Vademécum, selección de envase CIMA/AEMPS, prospecto y ficha técnica dentro de la app, notas de seguridad y problemas de suministro. Comprobaciones al entrar, con caché persistente de 12 horas. Las equivalencias internacionales se abren en Vademécum. [Uso y alcance de la integración](docs/informacion-medicamentos.md).
 - **Avisos:** en la app, en el navegador con la web abierta y, opcionalmente, en el móvil con **ntfy aunque cierres la web**.
 - **Usuarios:** la cuenta administradora puede crear cuentas desde Ajustes. Cada persona tiene sus propios datos, pautas y avisos.
 - **Datos:** SQLite persistente, exportación personal JSON y herramienta de copia consistente del servidor.
@@ -78,4 +79,4 @@ node --check app/static/app.js
 
 Consulta **[mantenimiento](docs/mantenimiento.md)** para realizar una copia SQLite consistente, restaurar el servidor, recuperar una contraseña y exportar datos. La exportación JSON es un archivo de consulta y portabilidad; no existe un botón de importación/restauración JSON.
 
-Arquitectura: Python estándar + servidor HTTP con hilos + SQLite WAL + JavaScript sin compilación. El contenedor funciona sin privilegios, con sistema de archivos de solo lectura salvo `/data` y `/tmp`. No incorpora CDN, fuentes remotas, analítica ni servicios médicos externos. Solo el envío opcional a ntfy necesita una conexión externa durante el uso.
+Arquitectura: Python estándar + servidor HTTP con hilos + SQLite WAL + JavaScript sin compilación. El contenedor funciona sin privilegios, con sistema de archivos de solo lectura salvo `/data` y `/tmp`. No incorpora CDN, fuentes remotas ni analítica. La información opcional de medicamentos consulta la API pública de CIMA/AEMPS; el envío opcional a ntfy también necesita una conexión externa.

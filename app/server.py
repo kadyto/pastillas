@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import __version__
-from . import alerts, auth, service
+from . import alerts, auth, medicine_info, service
 from .db import StorageError, connect, initialize
 from .domain import Invalid
 
@@ -126,6 +126,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(409, dict(error=str(error) if isinstance(error, service.Conflict) else "El registro ya existe o está relacionado con otros datos."))
         except Invalid as error:
             self.send(400, dict(error=str(error)))
+        except medicine_info.SourceUnavailable as error:
+            self.send(503, dict(error=str(error)))
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception:
@@ -140,6 +142,10 @@ class Handler(BaseHTTPRequestHandler):
                 user = auth.public_user(self.user(db))
             except Unauthorized:
                 user = None
+            if user:
+                medicine_info.enqueue_user(db, user['id'], now)
+                db.commit()
+                medicine_info.WAKE.set()
             return self.send(200, dict(user=user, setup_required=not bool(db.execute("SELECT 1 FROM users LIMIT 1").fetchone()), version=__version__, ntfy_base_url=alerts.ntfy_base()))
         data = self.body() if method in ("POST", "PUT", "DELETE") else {}
         if path in ("/api/login", "/api/setup") and method == "POST":
@@ -169,11 +175,43 @@ class Handler(BaseHTTPRequestHandler):
                 if not user or not auth.verify_password(password, user["password"]):
                     raise Unauthorized("Usuario o contraseña incorrectos.")
             token = auth.session(db, user["id"])
+            medicine_info.enqueue_user(db, user['id'], now)
             db.commit()
+            medicine_info.WAKE.set()
             with LOGIN_LOCK:
                 FAILED_LOGINS.pop(ip, None)
             return self.send(200, auth.public_user(user), headers=self.cookie(token))
         user = self.user(db)
+        # Las fuentes se consultan sin mantener una transacción de lectura/escritura.
+        if path == '/api/medicine-search' and method == 'GET':
+            try:
+                page = int(query.get('page', ['1'])[0])
+            except ValueError:
+                raise Invalid('Página no válida.') from None
+            return self.send(200, medicine_info.search(query.get('q', [''])[0], page))
+        if path == '/api/medicine-catalog' and method == 'GET':
+            return self.send(200, medicine_info.catalog_public(query.get('nregistro', [''])[0]))
+        match = re.fullmatch(r'/api/medications/(\d+)/(information|document)', path)
+        if match:
+            ident, action = int(match[1]), match[2]
+            service.owned(db, 'medications', ident, user['id'])
+            if action == 'document' and method == 'GET':
+                info = medicine_info.information(db, ident)
+                if not info:
+                    raise Invalid('Vincula antes el medicamento a CIMA.')
+                return self.send(200, medicine_info.document(info['link']['nregistro'], query.get('type', ['2'])[0]))
+            if action == 'information' and method == 'GET':
+                return self.send(200, medicine_info.information(db, ident))
+            if action == 'information' and method == 'POST':
+                result = medicine_info.link(db, user['id'], ident, data)
+                db.commit()
+                medicine_info.WAKE.set()
+                return self.send(200, result)
+            if action == 'information' and method == 'DELETE':
+                db.execute('DELETE FROM medicine_links WHERE medication_id=?', (ident,))
+                db.commit()
+                return self.send(200, dict(ok=True))
+            return self.send(405, dict(error='Método no permitido.'))
         if method in ("POST", "PUT", "DELETE"):
             db.execute("BEGIN IMMEDIATE")
         elif method == "GET":
@@ -294,9 +332,12 @@ def main():
     stop = threading.Event()
     thread = threading.Thread(target=alerts.worker, args=(stop,), daemon=True)
     thread.start()
+    info_thread = threading.Thread(target=medicine_info.worker, args=(stop,), daemon=True)
+    info_thread.start()
     server = Server((os.environ.get("HOST", "0.0.0.0"), int(os.environ.get("PORT", "8000"))), Handler)
     def shutdown(signum, frame):
         stop.set()
+        medicine_info.WAKE.set()
         threading.Thread(target=server.shutdown, daemon=True).start()
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
@@ -305,8 +346,10 @@ def main():
         server.serve_forever()
     finally:
         stop.set()
+        medicine_info.WAKE.set()
         server.server_close()
         thread.join(timeout=7)
+        info_thread.join(timeout=9)
 
 
 if __name__ == "__main__":
