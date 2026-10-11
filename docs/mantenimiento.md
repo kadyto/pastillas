@@ -41,3 +41,5 @@ La cuenta administradora crea otras cuentas desde Ajustes, pero las cuentas mant
 ## Persistencia
 
 Mantén la misma carpeta `DATA_DIR` al recrear o actualizar el stack. Medicamentos, stock, usuarios, recetas, registros de toma y avisos se guardan en esa carpeta. El historial no se borra al reiniciar. Eliminar un medicamento desde la interfaz sí elimina sus tomas y movimientos tras la confirmación; pausarlo los conserva.
+
+Si utilizas `compose.dockhand.volume.yaml`, los mismos archivos se guardan en el volumen `pastillas_data` del stack, montado en `/data`. Conserva el nombre del stack y ese volumen al actualizar, y no marques la opción de eliminar volúmenes al recrear el contenedor. La herramienta de copia SQLite se utiliza con el mismo comando; después descarga el archivo mediante el explorador del volumen en Dockhand o tu herramienta de copias Docker.

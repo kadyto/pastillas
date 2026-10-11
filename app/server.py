@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import __version__
 from . import alerts, auth, service
-from .db import connect, initialize
+from .db import StorageError, connect, initialize
 from .domain import Invalid
 
 STATIC = Path(__file__).parent / "static"
@@ -296,7 +296,11 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     os.umask(0o077)
     alerts.ntfy_base()
-    initialize()
+    try:
+        initialize()
+    except StorageError as error:
+        log.error("%s", error)
+        raise SystemExit(1) from None
     with connect() as db:
         auth.initial_user(db)
     stop = threading.Event()

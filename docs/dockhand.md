@@ -1,5 +1,13 @@
 # Instalar Pastillas con Dockhand
 
+## Opción sencilla: volumen gestionado por Docker
+
+Pega [compose.dockhand.volume.yaml](../compose.dockhand.volume.yaml) en el editor del stack. Define `INITIAL_ADMIN_USER`, `INITIAL_ADMIN_PASSWORD` y, si lo necesitas, `APP_PORT`; las variables de HTTPS y ntfy funcionan igual que en la tabla inferior. No necesitas crear una carpeta en el NAS ni configurar `DATA_DIR`, `APP_UID` o `APP_GID`: el contenedor usa UID/GID 10001 y Docker inicializa el volumen con ese propietario.
+
+Despliega con build habilitado. Se crea un volumen persistente del proyecto llamado `<nombre-del-stack>_pastillas_data` (Dockhand puede aplicar su propio prefijo). Mantén el nombre del stack y el volumen al actualizar. Puedes verlo en la sección Volumes de Dockhand. No elimines ese volumen al recrear el contenedor.
+
+Esta variante inicia una base nueva. Si ya tienes datos en una carpeta del NAS, conserva el Compose original y corrige sus permisos, o realiza una migración con el contenedor detenido. Cambiar el Compose no copia los datos automáticamente.
+
 ## Preparar el NAS
 
 Crea una carpeta local de datos, por ejemplo `/volume1/docker/pastillas/data` en Synology. Usa la ruta real que indique tu NAS; no una ruta SMB/NFS. Dale permiso de lectura y escritura a una cuenta sin privilegios. Introduce su UID y GID en `APP_UID` y `APP_GID`. La carpeta debe existir antes del despliegue; el Compose no la crea automáticamente.
@@ -46,6 +54,21 @@ Para fijar un commit, sustituye conjuntamente:
 El Dockerfile también admite construcción local mediante `compose.yaml`.
 
 ## Resolver problemas
+
+### SQLite: unable to open database file
+
+En el Compose con carpeta del NAS, `/data` es exactamente la ruta indicada en `DATA_DIR`. El contenedor debe poder crear y modificar `pastillas.sqlite` y los archivos `-wal`/`-shm`. El propietario de `/data` dentro de la imagen no cambia el propietario de una carpeta montada desde el NAS.
+
+Si es una primera instalación sin datos, sustituye el Compose del stack por la variante de volumen gestionado de arriba y vuelve a desplegar con build habilitado. Puedes conservar las variables del usuario, la contraseña y el puerto; la variante no usa las de carpeta/UID/GID. Deja la carpeta anterior intacta.
+
+Para seguir usando tu carpeta, revisa en el administrador de archivos del NAS:
+
+1. `DATA_DIR` apunta a la carpeta local correcta y el montaje permite escritura.
+2. `APP_UID` y `APP_GID` corresponden al usuario/grupo con acceso a esa carpeta. El valor 10001 es un valor por defecto; puede no coincidir con ninguna cuenta de tu NAS.
+3. Los permisos y las ACL permiten a esa cuenta recorrer la ruta, crear archivos y modificar la base si ya existe. También debe haber espacio libre.
+4. Después de corregir variables o permisos, recrea el contenedor en Dockhand.
+
+La aplicación comprueba el acceso al iniciar y muestra la ruta, el UID/GID real y el error de almacenamiento. No cambia propietarios ni busca otra carpeta automáticamente.
 
 - **Git no está instalado:** conserva el contexto `.tar.gz`; no uses `.git#main`.
 - **No encuentra el Dockerfile:** usa `pastillas-main/Dockerfile` y `SOURCE_DIR: pastillas-main`.

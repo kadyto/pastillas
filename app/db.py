@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import tempfile
 from pathlib import Path
 
 SCHEMA = """
@@ -66,6 +67,40 @@ class Connection(sqlite3.Connection):
             self.close()
 
 
+class StorageError(RuntimeError):
+    """El almacenamiento configurado no está disponible para SQLite."""
+
+
+def storage_message(path, error):
+    identity = f"{os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") else "el usuario del proceso"
+    return (
+        f"No se puede usar la base de datos {path} con UID:GID {identity}: {error}. "
+        "La carpeta debe permitir crear y modificar la base y sus archivos SQLite -wal/-shm. "
+        "En Dockhand revisa DATA_DIR, APP_UID, APP_GID y los permisos/ACL de la carpeta del NAS, "
+        "o usa compose.dockhand.volume.yaml para una instalación con un volumen Docker nuevo."
+    )
+
+
+def prepare_storage(path):
+    if str(path) == ":memory:":
+        return
+    target = Path(path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # SQLite WAL también necesita escribir en la carpeta, aunque la base ya exista.
+        with tempfile.TemporaryFile(prefix=".pastillas-storage-", dir=target.parent) as probe:
+            probe.write(b"pastillas")
+            probe.flush()
+            os.fsync(probe.fileno())
+        if target.exists():
+            if not target.is_file():
+                raise OSError("DATABASE_PATH debe señalar a un archivo, no a una carpeta")
+            descriptor = os.open(target, os.O_RDWR)
+            os.close(descriptor)
+    except OSError as error:
+        raise StorageError(storage_message(path, error.strerror or str(error))) from error
+
+
 def connect(path=None):
     path = path or os.environ.get("DATABASE_PATH", "data/pastillas.sqlite")
     if path != ":memory:":
@@ -78,9 +113,14 @@ def connect(path=None):
 
 
 def initialize(path=None):
-    with connect(path) as db:
-        db.execute("PRAGMA journal_mode=WAL")
-        version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 1:
-            raise RuntimeError("La base de datos pertenece a una versión más reciente.")
-        db.executescript(SCHEMA)
+    path = path or os.environ.get("DATABASE_PATH", "data/pastillas.sqlite")
+    prepare_storage(path)
+    try:
+        with connect(path) as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version > 1:
+                raise RuntimeError("La base de datos pertenece a una versión más reciente.")
+            db.executescript(SCHEMA)
+    except sqlite3.OperationalError as error:
+        raise StorageError(storage_message(path, str(error))) from error

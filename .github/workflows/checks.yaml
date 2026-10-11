@@ -26,6 +26,7 @@ jobs:
         run: |
           docker compose -f compose.yaml config --quiet
           docker compose -f compose.dockhand.yaml config --quiet
+          docker compose -f compose.dockhand.volume.yaml config --quiet
       - name: Build and smoke-test container
         run: |
           docker build -t pastillas:test .
@@ -37,6 +38,20 @@ jobs:
           curl -fsS http://127.0.0.1:8092/healthz
           curl -fsS http://127.0.0.1:8092/ | head -c 300
           docker rm -fv pastillas-ci
+      - name: Verify Dockhand volume installation and persistence
+        env:
+          INITIAL_ADMIN_USER: testuser
+          INITIAL_ADMIN_PASSWORD: ci-only-password-1234
+          APP_PORT: '8094'
+          BIND_ADDRESS: 127.0.0.1
+        run: |
+          trap 'docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml down --volumes' EXIT
+          docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml up --build -d --wait --wait-timeout 90
+          curl -fsS http://127.0.0.1:8094/healthz
+          docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml exec -T pastillas python -c "from app.db import connect; db=connect(); db.execute('CREATE TABLE storage_probe (value INTEGER)'); db.execute('INSERT INTO storage_probe VALUES (37)'); db.commit(); db.close()"
+          docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml down
+          docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml up --no-build -d --wait --wait-timeout 90
+          docker compose -p pastillas-storage-check -f compose.dockhand.volume.yaml exec -T pastillas python -c "from app.db import connect; db=connect(); assert db.execute('SELECT value FROM storage_probe').fetchone()[0]==37; db.close()"
       - name: Browser smoke test
         run: |
           npm install --prefix /tmp/pastillas-browser --no-audit --no-fund playwright-core

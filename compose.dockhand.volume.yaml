@@ -1,0 +1,37 @@
+# Instalación con almacenamiento gestionado por Docker: no requiere DATA_DIR ni permisos del NAS.
+services:
+  pastillas:
+    build:
+      context: https://github.com/kadyto/pastillas/archive/refs/heads/main.tar.gz
+      dockerfile: pastillas-main/Dockerfile
+      args:
+        SOURCE_DIR: pastillas-main
+    init: true
+    restart: unless-stopped
+    # Coincide con el propietario de /data en la imagen; Docker lo conserva al crear el volumen.
+    user: "10001:10001"
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8092}:8000"
+    environment:
+      DATABASE_PATH: /data/pastillas.sqlite
+      INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Define tu usuario inicial}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Define una contraseña de al menos 12 caracteres}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-https://ntfy.sh}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      TZ: Europe/Madrid
+    volumes:
+      - pastillas_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 20s
+
+volumes:
+  pastillas_data:

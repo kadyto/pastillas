@@ -4,6 +4,10 @@ Tu botiquín, al día. Aplicación web en español para gestionar **medicamentos
 
 ## Instalar con Dockhand
 
+**Opción sin configurar permisos de carpetas:** pega [compose.dockhand.volume.yaml](compose.dockhand.volume.yaml). Docker crea un volumen persistente con los permisos correctos. Solo necesitas tu usuario, contraseña y un puerto libre; no utiliza `DATA_DIR`, `APP_UID` ni `APP_GID`. Conserva el mismo nombre del stack y su volumen al actualizar. Esta opción crea un botiquín nuevo: no importa datos de una carpeta anterior.
+
+**Opción con carpeta propia del NAS:** sigue los pasos siguientes.
+
 El mismo método que en [Listasdelacompra](https://github.com/kadyto/Listasdelacompra) y [no-lo-vuelvas-a-ver](https://github.com/kadyto/no-lo-vuelvas-a-ver): pega [compose.dockhand.yaml](compose.dockhand.yaml), configura las variables y despliega con **build habilitado**. Docker descarga el archivo público de GitHub y construye automáticamente. **No tienes que crear una imagen previamente, instalar Git ni usar una terminal.**
 
 1. Crea una carpeta de datos en tu NAS y dale permiso de escritura al UID/GID del contenedor.
