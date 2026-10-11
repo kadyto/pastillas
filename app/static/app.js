@@ -170,6 +170,7 @@ async function changeDay(day) {
 }
 function openDialog(title, content) {
   if(dialog.open)dialog.close();
+  clearTimeout(toastTimer); $('#toast').className = '';
   dialog.innerHTML=`<div class="dialog-header"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-action="close" aria-label="Cerrar diálogo">${icon('x',18)}</button></div><div class="dialog-body"><div class="error-box" id="form-error" role="alert"></div>${content}</div>`;
   dialog.showModal();
 }
