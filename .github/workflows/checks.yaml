@@ -48,3 +48,10 @@ jobs:
             sleep 1
           done
           PLAYWRIGHT_MODULE=/tmp/pastillas-browser/node_modules/playwright-core CHROMIUM_PATH=/usr/bin/google-chrome TEST_BASE_URL=http://127.0.0.1:8093 node tests/browser_smoke.cjs
+      - name: Save browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pastillas-preview
+          path: test-results/*.png
+          if-no-files-found: ignore

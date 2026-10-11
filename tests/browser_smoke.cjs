@@ -121,7 +121,8 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   for(const [hash,heading] of [['medications','Tus medicamentos'],['stock','Existencias sin sorpresas'],['prescriptions','Tus recetas, a mano'],['settings','A tu manera']]){
     await page.locator('nav').getByRole('link',{name:({medications:'Medicamentos',stock:'Existencias',prescriptions:'Recetas',settings:'Ajustes'})[hash],exact:true}).click();
     await page.getByRole('heading',{name:heading,exact:true}).waitFor();
-    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),`${hash}: desbordamiento móvil`);
+    const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,80)}))}));
+    assert.ok(layout.scroll<=layout.width+1,`${hash}: desbordamiento móvil ${JSON.stringify(layout)}`);
   }
   await page.getByRole('button',{name:'Cambiar a tema oscuro'}).click();
   assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
