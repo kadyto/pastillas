@@ -27,7 +27,7 @@ jobs:
           docker compose -f compose.yaml config --quiet
           docker compose -f compose.dockhand.yaml config --quiet
           docker compose -f compose.dockhand.volume.yaml config --quiet
-          docker compose -f compose.dockhand.volume.yaml config --format json | python -c "import json,sys,pathlib; c=json.load(sys.stdin); assert c['services']['pastillas']['build']['dockerfile_inline'].strip()==pathlib.Path('Dockerfile').read_text().strip()"
+          docker compose -f compose.dockhand.volume.yaml config --format json | python -c "import json,sys,pathlib; c=json.load(sys.stdin); assert c['services']['pastillas']['build']['dockerfile_inline'].replace(chr(36)*2,chr(36)).strip()==pathlib.Path('Dockerfile').read_text().strip()"
       - name: Build and smoke-test container
         run: |
           docker build -t pastillas:test .

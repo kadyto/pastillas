@@ -19,7 +19,7 @@ services:
 
         WORKDIR /app
         # SOURCE_DIR permite tanto construir desde una carpeta como desde el .tar.gz de GitHub.
-        COPY ${SOURCE_DIR}/app ./app
+        COPY $${SOURCE_DIR}/app ./app
         RUN mkdir /data /backups && chown -R 10001:10001 /app /data /backups
         USER 10001:10001
         EXPOSE 8000
