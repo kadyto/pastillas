@@ -40,6 +40,7 @@ jobs:
           docker rm -fv pastillas-ci
       - name: Verify Dockhand volume installation and persistence
         env:
+          COMPOSE_BAKE: 'false'
           INITIAL_ADMIN_USER: testuser
           INITIAL_ADMIN_PASSWORD: ci-only-password-1234
           APP_PORT: '8094'
