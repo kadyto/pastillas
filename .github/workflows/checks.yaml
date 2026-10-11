@@ -1,0 +1,39 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m unittest discover -s tests -v
+      - run: node --check app/static/app.js
+      - run: node --check app/static/sw.js
+      - name: Validate Compose
+        env:
+          DATA_DIR: /tmp/pastillas-data
+          INITIAL_ADMIN_USER: testuser
+          INITIAL_ADMIN_PASSWORD: ci-only-password-1234
+        run: |
+          docker compose -f compose.yaml config --quiet
+          docker compose -f compose.dockhand.yaml config --quiet
+      - name: Build and smoke-test container
+        run: |
+          docker build -t pastillas:test .
+          docker run -d --name pastillas-ci -v /data --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=32m -p 127.0.0.1:8092:8000 pastillas:test
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8092/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8092/healthz
+          curl -fsS http://127.0.0.1:8092/ | head -c 300
+          docker rm -fv pastillas-ci

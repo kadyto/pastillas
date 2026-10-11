@@ -1,0 +1,143 @@
+// QA opcional: PLAYWRIGHT_MODULE apunta a playwright o playwright-core instalado fuera del proyecto.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+
+(async () => {
+  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined, headless:true, args:['--no-sandbox']});
+  const context = await browser.newContext({viewport:{width:1440,height:1050},locale:'es-ES',timezoneId:'Europe/Madrid'});
+  const page = await context.newPage();
+  const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  const base=process.env.TEST_BASE_URL||'http://127.0.0.1:8000';
+  await page.goto(base);
+  await page.getByRole('heading',{name:'Empezamos contigo'}).waitFor();
+  await page.getByLabel('Usuario',{exact:true}).fill('qa-admin');
+  await page.getByLabel('Contraseña',{exact:true}).fill('solo-para-pruebas-123');
+  await page.getByRole('button',{name:'Crear mi cuenta'}).click();
+  await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
+
+  await page.locator('nav').getByRole('link',{name:'Recetas',exact:true}).click();
+  await page.getByRole('button',{name:'Añadir receta',exact:true}).click();
+  await page.getByLabel('Nombre o título').fill('Tratamiento habitual');
+  await page.getByLabel('Profesional').fill('Mi profesional sanitario');
+  await page.getByLabel('Referencia').fill('Receta de prueba');
+  const tomorrow = new Date(Date.now()+86400000).toISOString().slice(0,10);
+  await page.getByLabel('Fecha de renovación').fill(tomorrow);
+  await page.getByLabel('Indicaciones y notas').fill('Revisar en la próxima consulta.');
+  await page.getByRole('button',{name:'Guardar',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+
+  await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
+  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.getByLabel('Nombre del medicamento').fill('Medicación habitual');
+  await page.getByLabel('Marca').fill('Mi marca');
+  await page.getByLabel('Concentración o dosis del envase').fill('Según mi receta');
+  await page.getByLabel('Cantidad por toma').fill('0.5');
+  await page.getByLabel('Existencias que tienes ahora').fill('20');
+  await page.getByLabel('Intervalo en horas').fill('8');
+  await page.getByLabel('Indicaciones',{exact:true}).fill('Seguir las indicaciones de mi receta.');
+  await page.getByLabel('Receta vinculada').selectOption({label:'Tratamiento habitual'});
+  await page.locator('dialog').getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  assert.equal(await page.locator('.med-card').count(),1);
+
+  await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
+  await page.getByRole('button',{name:'Tomada',exact:true}).first().click();
+  await page.locator('.dose-row.taken').waitFor();
+  let data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,19.5);
+  await page.getByRole('button',{name:'Deshacer toma de Medicación habitual'}).click();
+  await page.locator('dialog').getByRole('button',{name:'Confirmar'}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.locator('.dose-row.pending').first().waitFor();
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,20);
+
+  await page.locator('nav').getByRole('link',{name:'Existencias',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar compra',exact:true}).click();
+  await page.locator('input[name=amount]').fill('30');
+  await page.getByLabel('Precio total').fill('4.99');
+  await page.getByRole('button',{name:'Guardar existencias'}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,50);
+  await page.getByRole('button',{name:'Registrar compra',exact:true}).click();
+  await page.getByLabel('Tipo de movimiento').selectOption('adjustment');
+  await page.locator('input[name=amount]').fill('5');
+  await page.getByRole('button',{name:'Guardar existencias'}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.locator('.inventory-row.warn').waitFor();
+
+  await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
+  await page.getByRole('button',{name:'Editar',exact:true}).click();
+  await page.getByLabel('Tipo de pauta').selectOption('daily');
+  await page.getByLabel('Horas fijas del día').fill('08:00, 20:00');
+  await page.getByRole('button',{name:'Guardar cambios'}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  assert.ok((await page.locator('.med-card').textContent()).includes('08:00 · 20:00'));
+
+  await page.getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.getByLabel('Nombre del medicamento').fill('Jarabe de mi tratamiento');
+  await page.getByLabel('Presentación',{exact:true}).fill('Jarabe');
+  await page.getByLabel('Unidad de existencias').fill('ml');
+  await page.getByLabel('Cantidad por toma').fill('5');
+  await page.getByLabel('Existencias que tienes ahora').fill('100');
+  await page.getByLabel('Tipo de pauta').selectOption('as_needed');
+  await page.locator('dialog').getByRole('button',{name:'Añadir medicamento',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar toma',exact:true}).click();
+  await page.locator('dialog').getByRole('button',{name:'Confirmar'}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications.find(m=>m.unit==='ml').stock,95);
+
+  await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
+  await page.getByRole('button',{name:'Historial',exact:true}).first().click();
+  await page.getByRole('heading',{name:'Movimientos de existencias'}).waitFor();
+  await page.getByRole('button',{name:'Cerrar diálogo'}).click();
+  await page.getByLabel('Buscar medicamentos').fill('Jarabe');
+  assert.equal(await page.locator('.med-card').count(),1);
+  await page.getByLabel('Buscar medicamentos').fill('');
+  await page.locator('nav').getByRole('link',{name:'Ajustes',exact:true}).click();
+  await page.getByRole('button',{name:'Guardar ajustes'}).click();
+  await page.getByRole('heading',{name:'Avisos y horarios'}).waitFor();
+  await page.getByRole('button',{name:'Crear usuario'}).click();
+  await page.locator('dialog input[name=username]').fill('qa-otro');
+  await page.locator('dialog input[name=password]').fill('otra-cuenta-prueba-123');
+  await page.locator('dialog').getByRole('button',{name:'Crear usuario',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'hidden'});
+  const exportResult=await page.evaluate(()=>fetch('/api/export').then(r=>r.json()));
+  assert.equal(exportResult.medications.length,2);
+  assert.equal(exportResult.prescriptions.length,1);
+  assert.equal(exportResult.doses.length,1);
+
+  const folder=process.env.SCREENSHOT_DIR||'test-results';fs.mkdirSync(folder,{recursive:true});
+  await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
+  await page.screenshot({path:`${folder}/escritorio.png`,fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:`${folder}/movil.png`,fullPage:true});
+  for(const [hash,heading] of [['medications','Tus medicamentos'],['stock','Existencias sin sorpresas'],['prescriptions','Tus recetas, a mano'],['settings','A tu manera']]){
+    await page.locator('nav').getByRole('link',{name:({medications:'Medicamentos',stock:'Existencias',prescriptions:'Recetas',settings:'Ajustes'})[hash],exact:true}).click();
+    await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),`${hash}: desbordamiento móvil`);
+  }
+  await page.getByRole('button',{name:'Cambiar a tema oscuro'}).click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+  await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
+  await page.screenshot({path:`${folder}/movil-oscuro.png`,fullPage:true});
+
+  await page.locator('nav').getByRole('link',{name:'Ajustes',exact:true}).click();
+  await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
+  await page.getByLabel('Usuario',{exact:true}).fill('qa-otro');
+  await page.getByLabel('Contraseña',{exact:true}).fill('otra-cuenta-prueba-123');
+  await page.getByRole('button',{name:'Entrar',exact:true}).click();
+  await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
+  data=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications.length,0);
+  assert.equal(data.prescriptions.length,0);
+  assert.deepEqual(errors,[]);
+  await browser.close();
+  console.log('Navegador OK: recetas, pautas, tomas, compras, correcciones, historial, exportación, móvil, tema e aislamiento de usuarios.');
+})().catch(error=>{console.error(error);process.exit(1);});

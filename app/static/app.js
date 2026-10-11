@@ -1,0 +1,277 @@
+const $ = (selector, root = document) => root.querySelector(selector);
+const app = $('#app'), dialog = $('#dialog');
+const paths = {
+  pill: '<path d="m10.5 20.5 10-10a6.4 6.4 0 0 0-9-9l-10 10a6.4 6.4 0 0 0 9 9Z"/><path d="m8.5 8.5 7 7"/>',
+  home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-8h6v8"/>',
+  box: '<path d="m3 7 9-4 9 4v10l-9 4-9-4Z"/><path d="m3 7 9 5 9-5M12 12v9M7.5 5l9 5"/>',
+  rx: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h3"/>',
+  settings: '<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3 3-1 2 3h3l1-3 3-1 2-3-2-2 1-3-2-3-3 1-2-3Z"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check: '<path d="m5 12 4 4L19 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  x: '<path d="m6 6 12 12M6 18 18 6"/>',
+  arrow: '<path d="m9 5 7 7-7 7"/>',
+  left: '<path d="m15 5-7 7 7 7"/>',
+  search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
+  moon: '<path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z"/>',
+  edit: '<path d="m15 4 5 5M4 20l4-1L21 6a2 2 0 0 0-3-3L5 16Z"/>',
+  undo: '<path d="M3 10h11a6 6 0 0 1 0 12M3 10l5-5M3 10l5 5"/>',
+  drop: '<path d="M12 3s7 8 7 12a7 7 0 0 1-14 0c0-4 7-12 7-12Z"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 11h18M8 15h2M14 15h2"/>',
+  shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/>',
+  download: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>',
+  logout: '<path d="M9 3H3v18h6M9 12h12m-5-5 5 5-5 5"/>',
+};
+const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.pill}</svg>`;
+const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const number = value => new Intl.NumberFormat('es-ES', {maximumFractionDigits: 3}).format(value ?? 0);
+const state = {user: null, data: null, alerts: [], agenda: [], day: '', filter: 'all', medFilter: 'active', stockFilter: 'all', search: '', setup: false, version: '', ntfy: '', busy: false};
+let requestVersion = 0, toastTimer, notificationIds = new Set();
+let theme;
+try { theme = localStorage.getItem('pastillas-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { theme = 'light'; }
+document.documentElement.dataset.theme = theme;
+const nav = [ ['today','Hoy','home'], ['medications','Medicamentos','pill'], ['stock','Existencias','box'], ['prescriptions','Recetas','rx'], ['settings','Ajustes','settings'] ];
+const route = () => location.hash.slice(1) || 'today';
+const medById = id => state.data?.medications.find(m => m.id === Number(id));
+const tz = () => state.user?.timezone || 'Europe/Madrid';
+const dateFmt = (at, options = {}) => new Intl.DateTimeFormat('es-ES', {timeZone: tz(), ...options}).format(new Date(at * 1000));
+const clock = at => dateFmt(at, {hour:'2-digit', minute:'2-digit'});
+const fullDate = at => dateFmt(at, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+function inputDate(at, timeZone = tz()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(new Date(at * 1000)).map(p => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+const dateText = day => new Intl.DateTimeFormat('es-ES', {day:'numeric', month:'long', year:'numeric', timeZone:'UTC'}).format(new Date(`${day}T12:00:00Z`));
+const formIcon = med => /jarabe|gota|líquid|liquid|soluci|inyec/i.test(med.form) ? 'drop' : 'pill';
+const button = (action, label, name = '', extra = '', cls = '') => `<button class="button ${cls}" data-action="${action}" ${extra}>${name ? icon(name,17) : ''}${label}</button>`;
+function toast(message, error = false) {
+  clearTimeout(toastTimer);
+  $('#toast').textContent = message;
+  $('#toast').className = `visible${error ? ' error' : ''}`;
+  toastTimer = setTimeout(() => $('#toast').className = '', 6000);
+}
+async function api(path, method = 'GET', body) {
+  const response = await fetch(`/api${path}`, {method, credentials:'same-origin', headers: method === 'GET' ? {} : {'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(body || {})});
+  let data;
+  try { data = await response.json(); } catch { throw new Error('El servidor no responde correctamente. Revisa la conexión.'); }
+  if (!response.ok) {
+    if (response.status === 401 && !['/login','/setup'].includes(path)) { state.user = null; state.data = null; state.alerts = []; if (dialog.open) dialog.close(); renderLogin(); }
+    throw new Error(data.error || 'No se pudo completar la operación.');
+  }
+  return data;
+}
+const empty = (title, message, action = '', label = '') => `<div class="empty"><div class="empty-icon">${icon('pill',30)}</div><h2>${title}</h2><p>${message}</p>${action ? button(action,label,'plus','','primary') : ''}</div>`;
+function renderLogin() {
+  app.innerHTML = `<main class="login-shell" id="content"><div class="login-card"><a class="brand" href="/"> <img src="/icon.svg" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><h1>${state.setup ? 'Empezamos contigo' : 'Bienvenido a tu botiquín'}</h1><p>${state.setup ? 'Crea tu cuenta administradora para organizar medicamentos, tomas y existencias.' : 'Todo lo que necesitas para seguir tu tratamiento, en un solo lugar.'}</p><div class="error-box" id="login-error" role="alert"></div><form id="login-form"><label>Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="60"></label><label>Contraseña<input type="password" name="password" autocomplete="${state.setup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"><small>Al menos 12 caracteres.</small></label><button class="button primary" type="submit">${state.setup ? 'Crear mi cuenta' : 'Entrar'}${icon('arrow',17)}</button></form><p class="help">Tus datos se guardan en tu servidor.<br>Pastillas ${esc(state.version)}</p></div></main>`;
+  $('#login-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget, submit = $('button', form);
+    submit.disabled = true; $('#login-error').textContent = '';
+    try {
+      state.user = await api(state.setup ? '/setup' : '/login', 'POST', Object.fromEntries(new FormData(form)));
+      state.setup = false; state.day = ''; state.search = ''; state.data = null; notificationIds = new Set(); location.hash = 'today';
+      await refresh();
+    } catch (error) { $('#login-error')?.replaceChildren(document.createTextNode(error.message)); submit.disabled = false; }
+  });
+}
+function shell(content) {
+  const page = nav.find(n => n[0] === route());
+  app.innerHTML = `<aside class="sidebar"><a class="brand" href="#today"><img src="/icon.svg" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><nav aria-label="Navegación principal">${nav.map(([key,title,ic]) => `<a class="nav-link" href="#${key}" ${route() === key ? 'aria-current="page"' : ''}>${icon(ic)}<span>${title}</span></a>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon('shield',22)}<strong>Tu salud, en tus manos</strong>Un poco de organización.<br>Una cosa menos de la que preocuparte.</div><div class="sidebar-footer"><a href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">Pastillas ${esc(state.version)}</a><button class="icon-button" data-action="logout" aria-label="Cerrar sesión">${icon('logout',17)}</button></div></div></aside><main class="main" id="content"><div class="topbar"><div class="breadcrumb">Mi botiquín &nbsp;/&nbsp; <span>${esc(page?.[1] || 'Avisos')}</span></div><a class="mobile-brand" href="#today"><img src="/icon.svg" alt="">Pastillas</a><div class="top-actions"><button class="icon-button" data-action="theme" aria-label="Cambiar a tema ${theme === 'light' ? 'oscuro' : 'claro'}">${icon(theme === 'light' ? 'moon' : 'sun',18)}</button><a class="icon-button" href="#alerts" aria-label="Avisos${state.data.unread_alerts ? `, ${state.data.unread_alerts} sin leer` : ''}">${icon('bell',18)}${state.data.unread_alerts ? '<span class="dot"></span>' : ''}</a><div class="avatar" aria-hidden="true">${esc(state.user.username.slice(0,2).toUpperCase())}</div><span class="username">${esc(state.user.username)}</span></div></div>${!navigator.onLine ? '<div class="offline" role="alert">Sin conexión. Conecta con el servidor para registrar tomas y compras.</div>' : ''}${content}<p class="footer-note">Sigue la pauta indicada por tu profesional sanitario. Las previsiones dependen de la pauta y las existencias registradas.<br>Zona horaria: ${esc(tz())} · Pastillas ${esc(state.version)}</p></main>`;
+}
+function heading(title, subtitle, action = '', label = '') {
+  return `<div class="heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${action ? button(action,label,'plus','','primary') : ''}</div>`;
+}
+function supply(med) {
+  if (!med.active) return 'Tratamiento en pausa';
+  if (med.schedule === 'as_needed') return `${number(med.doses_left)} tomas disponibles`;
+  if (med.enough_until_end) return 'Cubre el tratamiento';
+  if (med.days_left === null) return 'Sin tomas futuras previstas';
+  if (med.doses_left === 0) return 'Sin cantidad para otra toma';
+  return `${number(Math.ceil(med.days_left))} ${Math.ceil(med.days_left) === 1 ? 'día' : 'días'} de cobertura aprox.`;
+}
+function low(med) { return med.active && (!med.end_at || med.end_at >= state.data.now) && (med.stock_warning || med.stock < med.dose); }
+function scheduleText(med) {
+  if (med.schedule === 'as_needed') return 'Según necesidad';
+  if (med.schedule === 'daily') return med.times.join(' · ');
+  return `Cada ${number(med.interval_hours)} horas`;
+}
+function doseRow(item) {
+  const pending = item.status === 'pending';
+  const future = item.scheduled_at > state.data.now + 300;
+  return `<article class="dose-row ${esc(item.status)} ${item.overdue ? 'overdue' : ''}"><div class="dose-time">${clock(item.scheduled_at)}<small>${item.overdue ? 'PENDIENTE' : pending ? 'PROGRAMADA' : 'REGISTRADA'}</small></div><div class="dose-icon">${icon(formIcon(item),22)}</div><div class="dose-body"><h3>${esc(item.name)}</h3><p>${number(item.amount ?? item.dose)} ${esc(item.unit)}${item.strength ? ` · ${esc(item.strength)}` : ''}${item.brand ? ` · ${esc(item.brand)}` : ''}</p>${item.instructions ? `<p class="instruction">${esc(item.instructions)}</p>` : ''}</div><div class="dose-actions">${pending ? `${button('take','Tomada','check',`data-id="${item.medication_id}" data-at="${item.scheduled_at}" ${future ? 'disabled title="Podrás registrarla cuando llegue su hora"' : ''}`,'primary small-button')}${button('skip','Omitir','',`data-id="${item.medication_id}" data-at="${item.scheduled_at}" ${future ? 'disabled' : ''}`,'small-button')}` : `<span class="status ${item.status === 'skipped' ? 'neutral' : ''}">${icon(item.status === 'taken' ? 'check' : 'x',13)}${item.status === 'taken' ? 'Tomada' : 'Omitida'}</span><button class="icon-button" data-action="undo" data-id="${item.dose_id}" aria-label="Deshacer toma de ${esc(item.name)}">${icon('undo',16)}</button>`}</div></article>`;
+}
+function renderToday() {
+  const all = state.agenda, today = state.day === state.data.today;
+  const taken = all.filter(i => i.status === 'taken').length;
+  const visible = all.filter(i => state.filter === 'all' || (state.filter === 'pending' ? i.status === 'pending' : i.status !== 'pending'));
+  const stock = state.data.medications.filter(low);
+  const renewal = state.data.prescriptions.filter(r => r.renewal_warning);
+  const next = state.data.agenda.find(i => i.status === 'pending' && i.scheduled_at >= state.data.now - 900);
+  const active = state.data.medications.filter(m => m.active);
+  const manual = active.filter(m => m.schedule === 'as_needed');
+  shell(`${heading('Tu botiquín, al día', 'Cada toma cuenta. Aquí tienes todo bajo control.', 'med-new', 'Añadir medicamento')}${today ? `<section class="hero"><div><span class="eyebrow">${esc(new Intl.DateTimeFormat('es-ES',{timeZone:tz(),weekday:'long',day:'numeric',month:'long'}).format(new Date(state.data.now*1000)))}</span><h2>${next ? `Tu próxima toma, a las ${clock(next.scheduled_at)}` : active.length ? 'Un día más, cuidándote.' : 'Un poco de orden. Mucha tranquilidad.'}</h2><p>${next ? `${esc(next.name)} · ${number(next.dose)} ${esc(next.unit)}${next.strength ? ` · ${esc(next.strength)}` : ''}` : active.length ? 'Consulta tus tomas y revisa qué necesitas reponer.' : 'Añade tu primer medicamento y deja que el botiquín haga las cuentas.'}</p></div><div class="hero-art" aria-hidden="true"><div class="pill-illustration"></div><div class="pill-illustration"></div></div></section>` : ''}<section class="stats" aria-label="Resumen"><div class="stat"><div class="stat-top">Tomas del día ${icon('clock')}</div><strong>${all.length}</strong><small>${today ? 'Programadas para hoy' : esc(dateText(state.day))}</small></div><div class="stat"><div class="stat-top">Ya registradas ${icon('check')}</div><strong>${taken}<span class="muted"> / ${all.length}</span></strong><small>${all.filter(i=>i.status==='pending').length} pendientes · ${all.filter(i=>i.status==='skipped').length} omitidas</small></div><a href="#medications" class="stat"><div class="stat-top">Medicamentos ${icon('pill')}</div><strong>${active.length}</strong><small>Tratamientos activos</small></a><a href="#stock" class="stat ${stock.length ? 'warn' : ''}"><div class="stat-top">Para reponer ${icon('box')}</div><strong>${stock.length}</strong><small>${stock.length ? 'Prepara tu próxima compra' : 'Existencias bajo control'}</small></a></section><div class="home-columns"><section><div class="section-title"><h2>${today ? 'Tus tomas de hoy' : 'Agenda de tomas'} <span class="count">${all.length}</span></h2><div class="day-control"><button class="icon-button" data-action="day-prev" aria-label="Día anterior">${icon('left',16)}</button><input type="date" id="agenda-day" value="${state.day}" min="2000-01-01" max="2100-12-31" aria-label="Fecha de la agenda"><button class="icon-button" data-action="day-next" aria-label="Día siguiente">${icon('arrow',16)}</button></div></div><div class="tabs" aria-label="Filtrar tomas">${[['all','Todas'],['pending','Pendientes'],['done','Registradas']].map(([key,label])=>`<button data-action="dose-filter" data-value="${key}" aria-pressed="${state.filter === key}">${label}</button>`).join('')}</div><div class="dose-list">${visible.length ? visible.map(doseRow).join('') : empty(all.length ? 'Todo listo por aquí' : active.length ? 'Sin tomas programadas' : 'Tu botiquín empieza aquí', all.length ? 'No hay tomas con este filtro.' : active.length ? 'Puedes elegir otro día o registrar una toma según necesidad.' : 'Guarda tus medicamentos, indica la pauta y registra las existencias que tienes.', all.length || active.length ? '' : 'med-new', 'Añadir mi primer medicamento')}</div>${manual.length && today ? `<div class="section-title form-section"><h2>Según necesidad</h2></div><div class="dose-list">${manual.map(m=>`<article class="dose-row"><div class="dose-icon">${icon(formIcon(m))}</div><div class="dose-body"><h3>${esc(m.name)}</h3><p>${number(m.dose)} ${esc(m.unit)} por toma · ${esc(m.instructions)}</p></div>${button('manual','Registrar toma','check',`data-id="${m.id}"`,'small-button')}</article>`).join('')}</div>` : ''}</section><aside><div class="section-title"><h2>Tu próxima compra</h2><a class="link-button" href="#stock">Ver todo ${icon('arrow',14)}</a></div><div class="panel">${stock.length ? stock.slice(0,4).map(m=>`<div class="shopping-item"><h3>${esc(m.name)}</h3><p>${number(m.stock)} ${esc(m.unit)} disponibles</p><div><span class="status amber">${esc(supply(m))}</span><button class="icon-button" data-action="stock-add" data-id="${m.id}" aria-label="Registrar compra de ${esc(m.name)}">${icon('plus',17)}</button></div></div>`).join('') : `<div class="shopping-item"><div><span class="dose-icon">${icon('check')}</span><h3>Todo en orden</h3></div><p>${active.length ? 'No necesitas reponer ningún medicamento según las pautas registradas.' : 'Aquí verás qué medicamentos conviene reponer.'}</p></div>`}</div>${renewal.length ? `<div class="mini-note"><strong>${icon('rx',16)} Tienes ${renewal.length} ${renewal.length === 1 ? 'receta' : 'recetas'} para renovar</strong>${renewal.slice(0,3).map(r=>esc(r.title)).join(' · ')}<br><a href="#prescriptions" class="link-button">Revisar recetas ${icon('arrow',14)}</a></div>` : `<div class="mini-note"><strong>${icon('bell',16)} Que no se te pase</strong>Configura los avisos de tomas y existencias para recibirlos también en tu móvil.<br><a href="#settings" class="link-button">Configurar avisos ${icon('arrow',14)}</a></div>`}</aside></div>`);
+  $('#agenda-day').addEventListener('change', event => { if (event.target.value) changeDay(event.target.value); });
+}
+function medCard(med) {
+  const recipe = state.data.prescriptions.find(r=>r.id === med.prescription_id);
+  return `<article class="med-card ${!med.active ? 'paused' : ''}"><div class="med-top"><div class="dose-icon">${icon(formIcon(med),23)}</div><div><h3>${esc(med.name)}</h3><p>${esc([med.brand,med.form,med.strength].filter(Boolean).join(' · '))}</p></div><span class="status ${!med.active ? 'neutral' : low(med) ? 'amber' : ''}">${!med.active ? 'En pausa' : low(med) ? 'Reponer' : 'Activo'}</span></div><dl class="med-facts"><div><dt>PAUTA</dt><dd>${number(med.dose)} ${esc(med.unit)}<br>${esc(scheduleText(med))}</dd></div><div><dt>EXISTENCIAS</dt><dd>${number(med.stock)} ${esc(med.unit)}<br><span class="muted">${esc(supply(med))}</span></dd></div></dl>${med.instructions ? `<p class="muted">${esc(med.instructions)}</p>` : ''}${recipe ? `<p class="muted">${icon('rx',14)} ${esc(recipe.title)}</p>` : ''}${med.end_at ? `<p class="muted">Hasta ${fullDate(med.end_at)}</p>` : ''}<div class="card-actions">${button('stock-add','Compra','plus',`data-id="${med.id}"`,'small-button')}${button('med-edit','Editar','edit',`data-id="${med.id}"`,'small-button')}${button('history','Historial','clock',`data-id="${med.id}"`,'small-button push')}</div></article>`;
+}
+function matchingMeds() {
+  const query = state.search.toLocaleLowerCase('es');
+  return state.data.medications.filter(m=>`${m.name} ${m.brand} ${m.form} ${m.strength}`.toLocaleLowerCase('es').includes(query));
+}
+function renderMedications() {
+  const meds = matchingMeds().filter(m=>state.medFilter==='all' || (state.medFilter==='active' ? m.active : !m.active));
+  shell(`${heading('Tus medicamentos', 'Tu tratamiento, con el nombre y la presentación que tú usas.', 'med-new', 'Añadir medicamento')}<div class="toolbar"><label class="search">${icon('search',19)}<input id="med-search" type="search" placeholder="Buscar nombre, marca o presentación…" value="${esc(state.search)}" aria-label="Buscar medicamentos"></label><div class="tabs" aria-label="Filtrar medicamentos">${[['active','Activos'],['paused','En pausa'],['all','Todos']].map(([key,label])=>`<button data-action="med-filter" data-value="${key}" aria-pressed="${state.medFilter === key}">${label}</button>`).join('')}</div></div><div id="med-results" class="med-grid">${meds.map(medCard).join('')}</div>${!meds.length ? empty('Aún no hay medicamentos aquí', 'Añade tu primer medicamento o cambia el filtro de búsqueda.', 'med-new', 'Añadir medicamento') : ''}`);
+  $('#med-search').addEventListener('input', event => { state.search = event.target.value; const meds = matchingMeds().filter(m=>state.medFilter==='all'||(state.medFilter==='active'?m.active:!m.active)); $('#med-results').innerHTML=meds.length?meds.map(medCard).join(''):empty('Sin resultados','Prueba con otro nombre o marca.'); });
+}
+function renderStock() {
+  const meds = matchingMeds().filter(m=>m.active && (state.stockFilter==='all' || low(m)));
+  shell(`${heading('Existencias sin sorpresas', 'Registra lo que compras y anticipa cuándo necesitarás reponer.') }<div class="toolbar"><div class="tabs" aria-label="Filtrar existencias">${[['all','Todo el botiquín'],['low','Para reponer']].map(([key,label])=>`<button data-action="stock-filter" data-value="${key}" aria-pressed="${state.stockFilter === key}">${label}</button>`).join('')}</div><span class="help">Las tomas confirmadas descuentan la cantidad automáticamente.</span></div><div class="inventory-list">${meds.length ? meds.map(m=>`<article class="inventory-row ${low(m)?'warn':''}"><div class="dose-icon">${icon(formIcon(m))}</div><div class="inventory-name"><h3>${esc(m.name)}</h3><p>${esc([m.brand,m.strength].filter(Boolean).join(' · '))}</p></div><div class="inventory-stock"><strong>${number(m.stock)}</strong><small>${esc(m.unit)} disponibles</small></div><div class="inventory-forecast"><span class="status ${low(m)?'amber':''}">${esc(supply(m))}</span><div class="progress" aria-hidden="true"><span></span></div><p>${m.runs_out_at ? `Primera toma sin cubrir: ${fullDate(m.runs_out_at)}` : 'Según la pauta registrada'}</p></div>${button('stock-add','Registrar compra','plus',`data-id="${m.id}"`,'small-button')}</article>`).join('') : empty('Todo bajo control', state.stockFilter === 'low' ? 'No hay medicamentos que necesiten reposición.' : 'Añade un medicamento con las existencias que tienes.', state.stockFilter === 'low' ? '' : 'med-new', 'Añadir medicamento')}</div><div class="mini-note"><strong>Una previsión que se adapta a ti</strong>La fecha indica la primera toma futura que tus existencias no cubrirían. Las tomas omitidas no consumen existencias. Puedes definir cuántos días antes quieres recibir el aviso en cada medicamento.</div>`);
+}
+function renderPrescriptions() {
+  shell(`${heading('Tus recetas, a mano', 'Guarda las indicaciones y recuerda cuándo toca renovarlas.', 'rx-new', 'Añadir receta')}<div class="med-grid">${state.data.prescriptions.map(r=>`<article class="prescription-card"><div class="section-title"><div class="dose-icon">${icon('rx',23)}</div><span class="status ${r.renewal_warning?'amber':'neutral'}">${r.renewal_date ? `Renovar: ${esc(dateText(r.renewal_date))}` : 'Sin fecha de renovación'}</span></div><h3>${esc(r.title)}</h3>${r.doctor?`<p>Profesional: ${esc(r.doctor)}</p>`:''}${r.reference?`<p>Referencia: ${esc(r.reference)}</p>`:''}${r.notes?`<p>${esc(r.notes)}</p>`:''}<p class="rx-meds">${icon('pill',15)} ${esc(state.data.medications.filter(m=>m.prescription_id===r.id).map(m=>m.name).join(' · ') || 'Sin medicamentos vinculados')}</p><div class="card-actions">${button('rx-edit','Editar','edit',`data-id="${r.id}"`,'small-button')}${button('rx-delete','Eliminar','',`data-id="${r.id}"`,'small-button danger push')}</div></article>`).join('')}</div>${state.data.prescriptions.length?'':empty('Una receta, todo su tratamiento','Guarda su referencia, las indicaciones y la fecha de renovación. Después puedes vincularla a tus medicamentos.','rx-new','Añadir mi primera receta')}`);
+}
+function renderSettings() {
+  const user=state.user;
+  let enabled=false; try { enabled=localStorage.getItem(`pastillas-notify-${user.id}`)==='true'; } catch {}
+  const supported='Notification' in window && window.isSecureContext;
+  const topicUrl=`${state.ntfy}/${encodeURIComponent(user.ntfy_topic)}`;
+  shell(`${heading('A tu manera', 'Configura tus avisos, tu cuenta y la hora de tu botiquín.')}<div class="settings-grid"><section class="panel"><h2>${icon('bell',20)} Avisos y horarios</h2><p>Los avisos en la app siempre están disponibles. Elige cómo recibirlos fuera de ella.</p><div class="error-box" id="settings-error" role="alert"></div><form id="settings-form" class="form-stack"><label>Zona horaria de la agenda<input name="timezone" value="${esc(user.timezone)}" required list="timezones"><datalist id="timezones"><option>Europe/Madrid</option><option>Atlantic/Canary</option><option>America/Mexico_City</option><option>America/Bogota</option><option>America/Argentina/Buenos_Aires</option><option>Etc/UTC</option></datalist><small>Los medicamentos conservan su propia zona horaria. Edita cada pauta para cambiarla.</small></label><label class="check"><input type="checkbox" name="stock_alerts" ${user.stock_alerts?'checked':''}>Avisos de existencias bajas</label><label class="check"><input type="checkbox" name="prescription_alerts" ${user.prescription_alerts?'checked':''}>Recordar renovación de recetas (7 días antes)</label><fieldset class="form-stack form-section"><legend>Avisos en el móvil con ntfy</legend><label class="check"><input type="checkbox" name="ntfy_enabled" ${user.ntfy_enabled?'checked':''}>Enviar avisos a ntfy aunque cierre la web</label><label>Tema privado de ntfy<input name="ntfy_topic" value="${esc(user.ntfy_topic)}" minlength="16" maxlength="100" pattern="[A-Za-z0-9_-]{16,100}"><small>Conserva este nombre largo y aleatorio; quien lo conozca puede leer los avisos si el servidor no exige autenticación.</small></label><p class="help">1. Instala <a href="https://ntfy.sh" target="_blank" rel="noopener noreferrer">ntfy</a> en el móvil.<br>2. Suscríbete al tema de arriba en el servidor <strong>${esc(state.ntfy)}</strong>.<br>3. Activa el envío y guarda.<br>Se enviarán nombres de medicamentos e indicaciones a ese servidor. Para más privacidad puedes usar tu propio servidor ntfy.<br><a href="${esc(topicUrl)}" target="_blank" rel="noopener noreferrer">Abrir mi tema en ntfy ${icon('arrow',12)}</a></p></fieldset><button class="button primary" type="submit">Guardar ajustes</button></form><div class="form-section"><h3>Avisos en este navegador</h3><p class="help">Necesitan HTTPS o localhost y que la app siga abierta. Con la web cerrada utiliza ntfy.</p>${button('browser-notify', enabled ? 'Desactivar avisos del navegador' : 'Activar avisos del navegador','bell', !supported?'disabled':'','small-button')}<p class="help">${!supported ? 'No disponibles en este navegador o conexión HTTP.' : Notification.permission === 'denied' ? 'El permiso está bloqueado. Cámbialo en los ajustes del navegador.' : enabled ? 'Activados en este dispositivo.' : 'Desactivados en este dispositivo.'}</p></div></section><div class="form-stack"><section class="panel"><h2>${icon('shield',20)} Tu cuenta</h2><p>Has iniciado sesión como <strong>${esc(user.username)}</strong>.</p>${button('password','Cambiar contraseña','edit','','small-button')}${user.admin?`<div class="form-section"><h3>Más personas, su propio botiquín</h3><p class="help">Cada usuario tiene sus medicamentos, recetas y avisos separados.</p>${button('user-new','Crear usuario','plus','','small-button')}</div>`:''}<div class="form-section"><button class="logout" data-action="logout">${icon('logout',17)} Cerrar sesión</button></div></section><section class="panel"><h2>${icon('download',20)} Tus datos</h2><p>Descarga tus medicamentos, recetas, tomas y movimientos de existencias en un archivo JSON.</p><a class="button small-button" href="/api/export" download> ${icon('download',17)} Exportar mis datos</a><p class="help form-section">La copia completa del servidor se realiza con la herramienta SQLite incluida. Encontrarás los pasos en la documentación del repositorio.</p></section><section class="panel"><h2>Pastillas ${esc(state.version)}</h2><p>Tu botiquín personal, alojado en tu servidor.</p><a class="link-button" href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">Código y documentación ${icon('arrow',14)}</a></section></div></div>`);
+  $('#settings-form').addEventListener('submit', async event=>{
+    event.preventDefault();const form=event.currentTarget;const submit=$('button[type=submit]',form);submit.disabled=true;$('#settings-error').textContent='';
+    try{state.user=await api('/settings','PUT',{...Object.fromEntries(new FormData(form)),ntfy_enabled:form.ntfy_enabled.checked,stock_alerts:form.stock_alerts.checked,prescription_alerts:form.prescription_alerts.checked});toast('Ajustes guardados');await refresh();}catch(error){$('#settings-error').textContent=error.message;submit.disabled=false;}
+  });
+}
+function renderAlerts() {
+  shell(`${heading('Tus avisos', 'Tomas, reposiciones y recetas: lo que necesitas tener presente.')}<div class="section-title"><span class="help">Se conservan los avisos de los últimos 90 días.</span>${button('alerts-read','Marcar todo como leído','check','','small-button')}</div><div class="alert-list">${state.alerts.length?state.alerts.map(a=>`<article class="alert-row ${a.read?'':'unread'}"><div class="dose-icon">${icon(a.kind==='dose'?'clock':a.kind==='stock'?'box':'rx')}</div><div><h3>${esc(a.title)}</h3><p>${esc(a.message)}</p><small>${fullDate(a.created_at)} ${state.user.ntfy_enabled ? `· ${a.delivered?'Enviado a ntfy':a.attempts>=5?'No se pudo enviar a ntfy':a.created_at<state.data.now-600?'No enviado a ntfy':'Pendiente de envío a ntfy'}`:''}</small></div></article>`).join(''):empty('Sin avisos por ahora','Los recordatorios de tus pautas, existencias y recetas aparecerán aquí.')}</div>`);
+}
+function render() {
+  if (!state.user) return renderLogin();
+  if (!state.data) return;
+  ({today:renderToday,medications:renderMedications,stock:renderStock,prescriptions:renderPrescriptions,settings:renderSettings,alerts:renderAlerts}[route()]||renderToday)();
+}
+async function refresh() {
+  if(!state.user)return;
+  const version=++requestVersion;
+  const [data,alertList]=await Promise.all([api('/dashboard'),api('/alerts')]);
+  if(version!==requestVersion||!state.user)return;
+  state.data=data;state.alerts=alertList;state.day=state.day||data.today;
+  state.agenda=state.day===data.today?data.agenda:await api(`/agenda?day=${encodeURIComponent(state.day)}`);
+  if(version!==requestVersion)return;
+  render();notify();
+}
+async function changeDay(day) {
+  if(day<'2000-01-01'||day>'2100-12-31')return;
+  state.day=day;
+  try{await refresh();}catch(error){toast(error.message,true);}
+}
+function openDialog(title, content) {
+  if(dialog.open)dialog.close();
+  dialog.innerHTML=`<div class="dialog-header"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-action="close" aria-label="Cerrar diálogo">${icon('x',18)}</button></div><div class="dialog-body"><div class="error-box" id="form-error" role="alert"></div>${content}</div>`;
+  dialog.showModal();
+}
+function bindDialog(save) {
+  const form=$('form',dialog);
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();const submit=$('button[type=submit]',form);submit.disabled=true;$('#form-error').textContent='';
+    try{await save(form,Object.fromEntries(new FormData(form)));dialog.close();await refresh();toast('Guardado');}catch(error){if(dialog.open){$('#form-error').textContent=error.message;submit.disabled=false;}else toast(error.message,true);}
+  });
+}
+const formActions=(label='Guardar')=>`<div class="form-actions">${button('close','Cancelar')}<button class="button primary" type="submit">${label}</button></div>`;
+function medForm(med) {
+  const m=med||{name:'',brand:'',form:'Pastillas',strength:'',unit:'pastillas',dose:1,stock:0,schedule:'interval',interval_hours:8,times:['08:00','20:00'],timezone:tz(),start_at:Math.floor(Date.now()/60000)*60,end_at:null,active:true,reminders:true,warning_days:7,instructions:'',prescription_id:null};
+  openDialog(med?'Editar medicamento':'Añadir medicamento',`<form><fieldset><legend>El medicamento que tú usas</legend><div class="form-grid"><label class="full">Nombre del medicamento<input name="name" value="${esc(m.name)}" placeholder="Ej. nombre del medicamento" required maxlength="200"></label><label>Marca <span class="muted">(opcional)</span><input name="brand" value="${esc(m.brand)}" maxlength="200" placeholder="Marca o fabricante"></label><label>Presentación<input name="form" value="${esc(m.form)}" list="forms" required maxlength="100"><datalist id="forms"><option>Pastillas</option><option>Cápsulas</option><option>Jarabe</option><option>Gotas</option><option>Crema</option><option>Inyección</option><option>Inhalador</option><option>Sobres</option></datalist></label><label class="full">Concentración o dosis del envase<input name="strength" value="${esc(m.strength)}" placeholder="Ej. 500 mg, 20 mg/ml…" maxlength="100"><small>Texto libre, tal como figura en tu envase.</small></label><label>Unidad de existencias<input name="unit" value="${esc(m.unit)}" required maxlength="50" list="units"><datalist id="units"><option>pastillas</option><option>cápsulas</option><option>ml</option><option>gotas</option><option>gramos</option><option>dosis</option><option>sobres</option></datalist><small>Usa la misma unidad para cada toma y compra.</small></label><label>Cantidad por toma<input name="dose" type="number" min="0.001" max="1000000000" step="0.001" value="${m.dose}" required><small>Ej. 0,5 pastillas o 5 ml. No convierte unidades.</small></label>${!med?`<label class="full">Existencias que tienes ahora<input name="stock" type="number" min="0" max="1000000000" step="0.001" value="0" required><small>Si tienes 2 cajas de 30 pastillas, introduce 60.</small></label>`:''}</div></fieldset><fieldset class="form-section"><legend>Cuándo lo tomas</legend><div class="form-grid"><label class="full">Tipo de pauta<select name="schedule"><option value="interval" ${m.schedule==='interval'?'selected':''}>Cada cierto número de horas</option><option value="daily" ${m.schedule==='daily'?'selected':''}>A horas fijas cada día</option><option value="as_needed" ${m.schedule==='as_needed'?'selected':''}>Según necesidad (sin horario)</option></select></label><label id="interval-field" class="full">Intervalo en horas<input name="interval_hours" type="number" min="1" max="720" step="0.5" value="${m.interval_hours}" list="intervals"><datalist id="intervals"><option>6</option><option>8</option><option>12</option><option>24</option></datalist><small>Los intervalos se cuentan desde la primera toma, incluso por la noche.</small></label><label id="times-field" class="full">Horas fijas del día<input name="times_text" value="${esc(m.times.join(', '))}" placeholder="08:00, 14:00, 20:00"><small>Formato de 24 horas, separado por comas.</small></label><label class="full">Zona horaria de esta pauta<input name="timezone" value="${esc(m.timezone)}" required maxlength="100"><small>Las fechas y horas de este formulario se interpretan en esta zona.</small></label><label class="mobile-full">Primera toma / inicio<input name="start_local" type="datetime-local" value="${inputDate(m.start_at,m.timezone)}" min="2000-01-01T00:00" max="2100-12-31T23:59" required></label><label class="mobile-full">Fin del tratamiento <span class="muted">(opcional)</span><input name="end_local" type="datetime-local" value="${m.end_at?inputDate(m.end_at,m.timezone):''}" min="2000-01-01T00:00" max="2100-12-31T23:59"><small>La fecha incluye esa última hora.</small></label><label class="full">Indicaciones<input name="instructions" value="${esc(m.instructions)}" maxlength="4000" placeholder="Ej. después de comer, con agua…"></label></div></fieldset><fieldset class="form-section"><legend>Receta y avisos</legend><div class="form-grid"><label class="full">Receta vinculada<select name="prescription_id"><option value="">Sin receta vinculada</option>${state.data.prescriptions.map(r=>`<option value="${r.id}" ${r.id===m.prescription_id?'selected':''}>${esc(r.title)}</option>`).join('')}</select></label><label class="full">Avisar de reposición con estos días de antelación<input name="warning_days" type="number" min="0" max="365" step="1" value="${m.warning_days}" required></label><label class="check full"><input type="checkbox" name="reminders" ${m.reminders?'checked':''}>Recordar cada toma programada</label><label class="check full"><input type="checkbox" name="active" ${m.active?'checked':''}>Tratamiento activo</label></div></fieldset>${med?'<p class="inline-note form-section">Al cambiar la pauta se recalculan las tomas pendientes; el historial y las existencias se conservan. Para terminar temporalmente el tratamiento, desactívalo.</p>':''}${formActions(med?'Guardar cambios':'Añadir medicamento')}${med?`<button class="logout danger" type="button" data-action="med-delete" data-id="${m.id}">Eliminar medicamento e historial</button>`:''}</form>`);
+  const form=$('form',dialog);
+  function visibility(){ $('#interval-field').hidden=form.schedule.value!=='interval';$('#times-field').hidden=form.schedule.value!=='daily';form.times_text.required=form.schedule.value==='daily';form.interval_hours.required=form.schedule.value==='interval'; }
+  form.schedule.addEventListener('change',visibility);visibility();
+  bindDialog(async(form,data)=>{
+    const body={...data,dose:data.dose,stock:data.stock||0,interval_hours:Number(data.interval_hours)||24,times:data.times_text.split(',').map(t=>t.trim()).filter(Boolean),prescription_id:data.prescription_id?Number(data.prescription_id):null,warning_days:Number(data.warning_days),reminders:form.reminders.checked,active:form.active.checked};
+    await api(med?`/medications/${med.id}`:'/medications',med?'PUT':'POST',body);
+  });
+}
+function stockForm(med) {
+  openDialog(`Existencias · ${med.name}`,`<p>Tienes <strong>${number(med.stock)} ${esc(med.unit)}</strong>. Cada toma consume ${number(med.dose)} ${esc(med.unit)}.</p><form class="form-stack"><label>Tipo de movimiento<select name="kind"><option value="purchase">Registrar una compra</option><option value="adjustment">Corregir el total disponible</option></select></label><label><span id="stock-label">Cantidad comprada (${esc(med.unit)})</span><input name="amount" type="number" min="0.001" max="1000000000" step="0.001" required placeholder="Ej. 30"><small id="stock-help">Indica la cantidad total en ${esc(med.unit)}, no el número de cajas.</small></label><label>Precio total <span class="muted">(opcional, €)</span><input type="number" name="price" min="0" max="1000000000" step="0.01" placeholder="0,00"></label><label>Nota <span class="muted">(opcional)</span><input name="note" maxlength="1000" placeholder="Farmacia, número de cajas…"></label>${formActions('Guardar existencias')}</form>`);
+  const form=$('form',dialog);
+  form.kind.addEventListener('change',()=>{const adjustment=form.kind.value==='adjustment';$('#stock-label').textContent=adjustment?`Total contado (${med.unit})`:`Cantidad comprada (${med.unit})`;$('#stock-help').textContent=adjustment?'Este número sustituye al total de existencias. El historial registra la diferencia.':`Indica la cantidad total en ${med.unit}, no el número de cajas.`;form.amount.min=adjustment?'0':'0.001';form.amount.value=adjustment?med.stock:'';});
+  bindDialog((form,data)=>api(`/medications/${med.id}/stock`,'POST',data));
+}
+function rxForm(recipe) {
+  const r=recipe||{};
+  openDialog(recipe?'Editar receta':'Añadir receta',`<form class="form-stack"><label>Nombre o título<input name="title" required maxlength="200" value="${esc(r.title)}" placeholder="Ej. tratamiento habitual"></label><div class="form-grid"><label>Profesional <span class="muted">(opcional)</span><input name="doctor" maxlength="200" value="${esc(r.doctor)}"></label><label>Referencia <span class="muted">(opcional)</span><input name="reference" maxlength="200" value="${esc(r.reference)}"></label></div><label>Fecha de renovación <span class="muted">(opcional)</span><input name="renewal_date" type="date" min="2000-01-01" max="2100-12-31" value="${esc(r.renewal_date)}"><small>Recibirás un aviso desde 7 días antes si está activado.</small></label><label>Indicaciones y notas<textarea name="notes" rows="4" maxlength="4000">${esc(r.notes)}</textarea></label><p class="inline-note">Después de guardar puedes vincular esta receta desde el formulario de cada medicamento.</p>${formActions()}</form>`);
+  bindDialog((form,data)=>api(recipe?`/prescriptions/${recipe.id}`:'/prescriptions',recipe?'PUT':'POST',data));
+}
+async function showHistory(med) {
+  const data=await api(`/medications/${med.id}/history`);
+  const kinds={initial:'Existencias iniciales',purchase:'Compra',adjustment:'Corrección de inventario',dose:'Toma confirmada',undo:'Toma deshecha'};
+  openDialog(`Historial · ${med.name}`,`<p>Últimas 100 tomas y 100 movimientos. La exportación incluye el historial completo.</p><div class="history-tabs"><h3>Tomas registradas</h3>${data.doses.length?data.doses.map(d=>`<div class="history-row"><div>${fullDate(d.scheduled_at)}<p>${d.status==='taken'?`${number(d.amount)} ${esc(med.unit)} · tomada`:'Omitida'}${d.note?` · ${esc(d.note)}`:''}</p></div><button class="icon-button" data-action="undo" data-id="${d.id}" aria-label="Deshacer toma">${icon('undo',16)}</button></div>`).join(''):'<p class="help">Todavía no hay tomas registradas.</p>'}<h3>Movimientos de existencias</h3>${data.movements.map(m=>`<div class="history-row"><div>${esc(kinds[m.kind]||m.kind)}<p>${fullDate(m.recorded_at)}${m.note?` · ${esc(m.note)}`:''}${m.price_cents!==null?` · ${number(m.price_cents/100)} €`:''}</p></div><strong>${m.amount>0?'+':''}${number(m.amount)} ${esc(med.unit)}</strong></div>`).join('')}</div><div class="form-actions">${button('close','Cerrar')}</div>`);
+}
+function confirm(title,message,onConfirm) {
+  openDialog(title,`<p>${message}</p><form>${formActions('Confirmar')}</form>`);
+  bindDialog(onConfirm);
+}
+function accountForm(kind) {
+  const isUser=kind==='user';
+  openDialog(isUser?'Crear un usuario':'Cambiar contraseña',`<form class="form-stack">${isUser?'<label>Usuario<input name="username" minlength="3" maxlength="60" autocomplete="off" required></label>':'<label>Contraseña actual<input name="current_password" type="password" autocomplete="current-password" maxlength="256" required></label>'}<label>${isUser?'Contraseña inicial':'Nueva contraseña'}<input name="password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required><small>Al menos 12 caracteres.</small></label>${formActions(isUser?'Crear usuario':'Guardar contraseña')}</form>`);
+  bindDialog((form,data)=>api(isUser?'/users':'/password',isUser?'POST':'PUT',data));
+}
+async function notify() {
+  let enabled=false;try{enabled=localStorage.getItem(`pastillas-notify-${state.user.id}`)==='true';}catch{}
+  if(!enabled||!('Notification' in window)||Notification.permission!=='granted')return;
+  for(const alert of state.alerts){
+    if(notificationIds.has(alert.id)||alert.read||alert.created_at<state.data.now-90)continue;
+    notificationIds.add(alert.id);
+    const options={body:alert.message,icon:'/icon.svg',tag:`pastillas-${state.user.id}-${alert.id}`};
+    try{const registration=await navigator.serviceWorker?.ready;if(registration)await registration.showNotification(alert.title,options);else new Notification(alert.title,options);}catch{}
+  }
+}
+document.addEventListener('click',async event=>{
+  const target=event.target.closest('[data-action]');if(!target)return;
+  const action=target.dataset.action,id=Number(target.dataset.id),at=Number(target.dataset.at);
+  if(state.busy && !['close','theme'].includes(action))return;
+  try{
+    if(action==='close'){dialog.close();return;}
+    if(action==='theme'){theme=theme==='light'?'dark':'light';document.documentElement.dataset.theme=theme;try{localStorage.setItem('pastillas-theme',theme);}catch{}render();return;}
+    if(action==='med-new')return medForm();
+    if(action==='med-edit')return medForm(medById(id));
+    if(action==='stock-add')return stockForm(medById(id));
+    if(action==='rx-new')return rxForm();
+    if(action==='rx-edit')return rxForm(state.data.prescriptions.find(r=>r.id===id));
+    if(action==='history')return await showHistory(medById(id));
+    if(action==='password')return accountForm('password');
+    if(action==='user-new')return accountForm('user');
+    if(action==='med-delete')return confirm('Eliminar medicamento',`Se eliminarán <strong>${esc(medById(id).name)}</strong>, sus tomas y todos sus movimientos. Para conservar el historial puedes poner el tratamiento en pausa.`,()=>api(`/medications/${id}`,'DELETE'));
+    if(action==='rx-delete')return confirm('Eliminar receta','Se borrará la receta; los medicamentos vinculados se conservarán.',()=>api(`/prescriptions/${id}`,'DELETE'));
+    if(action==='manual')return confirm('Registrar toma según necesidad',`Vas a registrar <strong>${number(medById(id).dose)} ${esc(medById(id).unit)}</strong> de ${esc(medById(id).name)} ahora.`,()=>api(`/medications/${id}/doses`,'POST',{status:'taken'}));
+    if(action==='skip')return confirm('Omitir esta toma',`Se marcará la toma de <strong>${esc(medById(id).name)}</strong> a las ${clock(at)} como omitida. No se descontarán existencias.`,()=>api(`/medications/${id}/doses`,'POST',{scheduled_at:at,status:'skipped'}));
+    if(action==='undo')return confirm('Deshacer toma','La toma volverá a quedar pendiente y se devolverá a las existencias la cantidad que se descontó.',()=>api(`/doses/${id}`,'DELETE'));
+    if(action==='dose-filter'){state.filter=target.dataset.value;render();return;}
+    if(action==='med-filter'){state.medFilter=target.dataset.value;render();return;}
+    if(action==='stock-filter'){state.stockFilter=target.dataset.value;state.search='';render();return;}
+    if(action==='day-prev'||action==='day-next'){const d=new Date(`${state.day}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+(action==='day-prev'?-1:1));return changeDay(d.toISOString().slice(0,10));}
+    if(action==='browser-notify'){
+      let enabled=false;try{enabled=localStorage.getItem(`pastillas-notify-${state.user.id}`)==='true';}catch{}
+      if(!enabled){const permission=await Notification.requestPermission();if(permission!=='granted'){toast('No se ha concedido permiso para notificaciones.',true);return;}}
+      try{localStorage.setItem(`pastillas-notify-${state.user.id}`,String(!enabled));}catch{throw new Error('Este navegador no permite guardar la preferencia.');}renderSettings();return;
+    }
+    state.busy=true;target.disabled=true;
+    if(action==='take'){await api(`/medications/${id}/doses`,'POST',{scheduled_at:at,status:'taken'});await refresh();toast('Toma registrada. Existencias actualizadas.');}
+    if(action==='alerts-read'){await api('/alerts/read','POST');await refresh();toast('Avisos marcados como leídos');}
+    if(action==='logout'){await api('/logout','POST');state.user=null;state.data=null;state.search='';state.alerts=[];notificationIds.clear();if(dialog.open)dialog.close();renderLogin();}
+    if(action==='retry')await boot();
+  }catch(error){toast(error.message,true);}finally{state.busy=false;target.disabled=false;}
+});
+window.addEventListener('hashchange',()=>{if(dialog.open)dialog.close();state.search='';render();window.scrollTo({top:0});});
+window.addEventListener('online',()=>{refresh().catch(error=>toast(error.message,true));});
+window.addEventListener('offline',()=>{if(!dialog.open)render();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.user&&!dialog.open)refresh().catch(()=>{});});
+setInterval(()=>{if(state.user&&!dialog.open&&!state.busy&&route()!=='settings'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))refresh().catch(error=>toast(error.message,true));},30000);
+async function boot(){
+  try{const session=await api('/session');state.user=session.user;state.setup=session.setup_required;state.version=session.version;state.ntfy=session.ntfy_base_url;
+    if(state.user)await refresh();else renderLogin();
+    if('serviceWorker' in navigator && window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }catch(error){app.innerHTML=`<main class="login-shell" id="content"><div class="login-card"><h1>No se pudo abrir el botiquín</h1><p>${esc(error.message)}</p>${button('retry','Volver a intentar','undo','','primary')}</div></main>`;}
+}
+boot();

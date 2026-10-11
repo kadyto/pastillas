@@ -1,0 +1,38 @@
+# Pega este Compose en Dockhand: Docker descarga el código y construye automáticamente.
+# No necesitas preparar una imagen, instalar Git ni ejecutar comandos en el NAS.
+services:
+  pastillas:
+    build:
+      context: https://github.com/kadyto/pastillas/archive/refs/heads/main.tar.gz
+      dockerfile: pastillas-main/Dockerfile
+      args:
+        SOURCE_DIR: pastillas-main
+    init: true
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8092}:8000"
+    environment:
+      DATABASE_PATH: /data/pastillas.sqlite
+      INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Define tu usuario inicial}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Define una contraseña de al menos 12 caracteres}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-https://ntfy.sh}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      TZ: Europe/Madrid
+    volumes:
+      - type: bind
+        source: ${DATA_DIR:?Define una ruta absoluta para los datos en el host Docker}
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 20s
