@@ -2,11 +2,27 @@
 import json
 import sys
 import urllib.request
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app import medicine_info as info
 
 result={}
+class Page(HTMLParser):
+    def __init__(self):
+        super().__init__();self.links=[];self.text=[];self.current=None;self.ignore=0
+    def handle_starttag(self,tag,attrs):
+        values=dict(attrs)
+        if tag in ('script','style'):self.ignore+=1
+        if tag=='a':self.current=[values.get('href',''),'']
+    def handle_endtag(self,tag):
+        if tag in ('script','style'):self.ignore=max(0,self.ignore-1)
+        if tag=='a' and self.current:self.links.append(self.current);self.current=None
+    def handle_data(self,data):
+        if not self.ignore:
+            if self.current:self.current[1]+=data
+            if data.strip():self.text.append(data.strip())
 try:
     search=info.fetch_json('medicamentos?nombre=omacor')
     matches=info.rows(search)
@@ -31,7 +47,10 @@ for label,url in [('vademecum','https://www.vademecum.es/espana/medicamento/2763
                   ('equivalents','https://www.vademecum.es/espana/equivalencias/27631/omacor-1000-mg-capsulas-blandas')]:
     try:
         with urllib.request.build_opener(info.NoRedirect()).open(urllib.request.Request(url,headers={'User-Agent':'Pastillas/0.2 (+https://github.com/kadyto/pastillas)'}),timeout=8) as response:
-            result[label]=dict(status=response.status,content_type=response.headers.get('Content-Type'))
+            raw=response.read(2*1024*1024).decode('utf-8',errors='replace');p=Page();p.feed(raw)
+            result[label]=dict(status=response.status,content_type=response.headers.get('Content-Type'),
+                               text=' | '.join(p.text)[:18000],links=p.links[-130:])
+            Path('test-results/'+label+'.html').write_text(raw)
     except Exception as error:
         result[label]=dict(error=type(error).__name__,detail=str(error))
 print(json.dumps(result,ensure_ascii=False,indent=2))
