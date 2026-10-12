@@ -187,7 +187,11 @@ let activePage, activeBrowser;
 })().catch(async error=>{
   console.error(error);
   if(activePage){
-    console.error(await activePage.evaluate(()=>({heading:document.querySelector('main h1')?.textContent,toast:document.getElementById('toast')?.textContent,login:!!document.getElementById('login-form'),dialog:document.querySelector('dialog')?.open})).catch(()=>({})));
+    console.error(await activePage.evaluate(async()=>({heading:document.querySelector('main h1')?.textContent,
+      toast:document.getElementById('toast')?.textContent,login:!!document.getElementById('login-form'),
+      dialog:document.querySelector('dialog')?.open,rows:[...document.querySelectorAll('.dose-row')].map(e=>({cls:e.className,text:e.textContent.slice(0,240)})),
+      day:document.getElementById('agenda-day')?.value,body:document.querySelector('main')?.textContent.slice(0,2400),
+      dashboard:await fetch('/api/dashboard').then(r=>r.json())})).catch(()=>({})));
     fs.mkdirSync('test-results',{recursive:true});
     await activePage.screenshot({path:'test-results/fallo.png',fullPage:true}).catch(()=>{});
   }
