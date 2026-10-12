@@ -49,7 +49,9 @@ for label,url in [('vademecum','https://www.vademecum.es/espana/medicamento/2763
         with urllib.request.build_opener(info.NoRedirect()).open(urllib.request.Request(url,headers={'User-Agent':'Pastillas/0.2 (+https://github.com/kadyto/pastillas)'}),timeout=8) as response:
             raw=response.read(2*1024*1024).decode('utf-8',errors='replace');p=Page();p.feed(raw)
             result[label]=dict(status=response.status,content_type=response.headers.get('Content-Type'),
-                               text=' | '.join(p.text)[:18000],links=p.links[-130:])
+                               selects=re.findall(r'<select\b[\s\S]*?</select>',raw,re.I),
+                               country_scripts=[raw[max(0,m.start()-200):m.end()+700] for m in list(re.finditer(r'onchange|function[^\n]*[Pp]ais|\?pais|idpais',raw))[:8]],
+                               medicine_links=sum('/medicamento/' in u for u,t in p.links))
             Path('test-results/'+label+'.html').write_text(raw)
     except Exception as error:
         result[label]=dict(error=type(error).__name__,detail=str(error))
