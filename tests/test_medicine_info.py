@@ -11,7 +11,7 @@ from app import medicine_info as info, service, auth
 from app.db import connect, initialize
 from app.domain import Invalid
 from test_pastillas import DatabaseTests, NOW
-from medicine_fixture import MEDICINE, NOTE, SUPPLY, fetch
+from medicine_fixture import MEDICINE, NOTE, SUPPLY, EQUIVALENTS, equivalents, fetch
 
 URL = 'https://www.vademecum.es/espana/medicamento/27631/omacor-1000-mg-capsulas-blandas'
 
@@ -179,6 +179,31 @@ class InformationTests(DatabaseTests):
         self.assertEqual(first,second);self.assertEqual(source.call_count,1)
         self.assertIn('<table>',first['sections'][0]['html'])
         self.assertNotIn('script',first['sections'][0]['html'])
+
+    def test_public_equivalents_country_selection_and_twelve_hour_cache(self):
+        with patch.object(info,'fetch_vademecum',side_effect=equivalents) as source:
+            first=info.equivalents(URL,path=self.path)
+            second=info.equivalents(URL,path=self.path)
+            france=info.equivalents(URL,'fr',self.path)
+            info.equivalents(URL,'fr',self.path)
+            self.assertEqual(first,second)
+            self.assertEqual(source.call_count,2)
+        self.assertEqual(first['country'],'de')
+        self.assertEqual(france['country'],'fr')
+        self.assertIn('FRANCÉS',france['results'][0]['name'])
+        self.assertIn('/francia/',france['results'][0]['url'])
+        self.assertTrue(france['checked_at'])
+
+    def test_equivalent_query_cannot_fetch_other_hosts_or_invent_empty_results(self):
+        for raw in ['<p>Inicia sesión</p>',EQUIVALENTS.replace('1 equivalencias','10 equivalencias').replace('/alemania/medicamento/','/pagina/')]:
+            with self.assertRaises(info.SourceUnavailable):
+                info.parse_equivalents(raw)
+        with patch.object(info,'fetch_vademecum',side_effect=equivalents):
+            for country in ['http://127.0.0.1','xx','fr&redirect=https://evil','?code=fr']:
+                with self.assertRaises(Invalid):
+                    info.equivalents(URL,country,self.path)
+        with self.assertRaises(Invalid):
+            info.fetch_vademecum(info.equivalents_url(URL)+'?code=fr&redirect=https://evil')
 
 
 class MigrationTests(unittest.TestCase):

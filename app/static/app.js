@@ -367,7 +367,18 @@ async function showMedicineInfo(med) {
       if(name==='notices'){
         content.innerHTML=`<h3>Notas de seguridad y suministro</h3><p class="help">Fuente: CIMA / AEMPS. Las notas pueden ser anteriores a tu tratamiento; consulta su fecha y a qué medicamentos afectan.</p>${notes.length?notes.map(n=>`<article class="medicine-notice"><span class="status amber">${n.kind==='supply'?'Suministro':'Seguridad'}</span><h4>${esc(n.title)}</h4>${n.date?`<p class="help">Publicado: ${esc(dateFmt(n.date,{day:'numeric',month:'long',year:'numeric'}))}</p>`:''}${n.message?`<p>${esc(n.message)}</p>`:''}${n.expected_end?`<p>Fin previsto: ${esc(dateFmt(n.expected_end,{day:'numeric',month:'long',year:'numeric'}))}</p>`:''}${externalLink(n.url,'Ver aviso original')}</article>`).join(''):`<p>${item.status==='fresh'?'AEMPS no devuelve notas de seguridad ni problemas de suministro para la vinculación consultada.':'Todavía no hay una comprobación vigente. No se puede confirmar si hay avisos.'}</p>`}${link.vademecum_url?`<div class="picker-actions">${externalLink(link.vademecum_url,'Ver medicamento en Vademécum')}</div>`:''}`;
       }else if(name==='equivalents'){
-        content.innerHTML=`<h3>Equivalencias internacionales</h3><p>Vademécum mantiene las equivalencias en su web. Su acceso automático no está disponible en esta integración.</p>${item.equivalents_url?externalLink(item.equivalents_url,'Consultar equivalencias en Vademécum'):'<p>Añade la URL de Vademécum desde Editar vinculación para abrir las equivalencias de este medicamento.</p>'}<p class="help">La equivalencia no confirma que puedas sustituir un medicamento. Comprueba país, concentración y presentación con tu farmacéutico.</p>`;
+        content.innerHTML=`<h3>Equivalencias internacionales</h3>${item.equivalents_url?externalLink(item.equivalents_url,'Consultar equivalencias en Vademécum'):'<p>Añade la URL de Vademécum desde Editar vinculación para consultar las equivalencias de este medicamento.</p>'}<p class="help">Fuente: Vademécum.es. La lista puede incluir concentraciones y formas diferentes; no confirma una sustitución. Comprueba país, concentración y presentación con tu farmacéutico.</p><div class="equivalents-reader" aria-live="polite"></div>`;
+        const reader=$('.equivalents-reader',content);
+        async function load(country=''){
+          reader.textContent='Consultando equivalencias públicas de Vademécum…';
+          try{
+            const data=await api(`/medications/${med.id}/equivalents${country?'?country='+encodeURIComponent(country):''}`);
+            if(!reader.isConnected)return;
+            reader.innerHTML=`<label>País de las equivalencias<select id="equivalents-country">${data.countries.map(c=>`<option value="${esc(c.code)}" ${c.code===data.country?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><p class="help">${data.results.length} resultado(s) en ${esc(data.country_name)}${data.checked_at?` · Consultado: ${fullDate(data.checked_at)}`:''}</p><div class="medicine-results">${data.results.map(r=>`<article class="medicine-result"><strong>${esc(r.name)}</strong><small>${esc(r.details)}</small>${externalLink(r.url,'Ver en Vademécum','help')}</article>`).join('')||'<p>Vademécum no devuelve equivalencias para este país.</p>'}</div>`;
+            $('#equivalents-country',reader).addEventListener('change',event=>load(event.target.value));
+          }catch(error){if(reader.isConnected)reader.textContent=error.message;}
+        }
+        if(item.equivalents_url)await load();
       }else{
         const doc=docs.find(d=>String(d.type)===name);
         const links=externalLink(doc?.url,name==='2'?'Prospecto original de AEMPS':'Ficha técnica original de AEMPS')+externalLink(doc?.pdf_url,'PDF de AEMPS');

@@ -34,17 +34,18 @@ fechas de comprobación. Hay cuatro apartados:
   suministro no implica que el problema se haya resuelto: se comprueba el estado
   activo de la fuente. No se comprueba el lote de tu caja ni se garantiza la
   cobertura de avisos que AEMPS no asocie a la ficha CIMA.
-- **Equivalencias**: enlace directo a las equivalencias internacionales de ese
-  medicamento en Vademécum. Se necesita su URL. Se abren en la web de Vademécum;
-  no se extrae su contenido privado ni se sortean restricciones de acceso.
+- **Equivalencias**: listado público de Vademécum dentro de la app, con selector
+  de país, nombre y presentación de los productos, y enlaces a sus fichas originales.
+  Se necesita la URL de Vademécum. No confirma que puedas sustituir el medicamento:
+  el listado puede incluir concentraciones y formas distintas.
 
-**Alcance de Vademécum:** durante la comprobación sus páginas devolvieron una
-restricción de acceso al cliente web. Esta versión conserva su URL y enlaza sus
-equivalencias, pero la búsqueda, los documentos y las comprobaciones automáticas
-utilizan la API pública oficial de AEMPS. No necesita una cuenta de Vademécum.
-Una integración adicional con contenido o alertas propios de Vademécum requeriría
-acceso autorizado a sus servicios. Las equivalencias no son una indicación para
-cambiar tu tratamiento ni una confirmación de sustitución.
+**Fuentes y límites:** la búsqueda, los documentos y las comprobaciones automáticas
+utilizan la API pública oficial de AEMPS. Las equivalencias se leen de las páginas
+públicas de Vademécum, sin iniciar sesión, extraer contenido privado ni sortear
+restricciones de acceso. No se consultan precios, interacciones ni servicios para
+profesionales que requieran registro. Si Vademécum bloquea la consulta o cambia
+su formato, se muestra el error y se conserva el enlace al original; no se presenta
+el fallo como una lista vacía. La app identifica la fuente de cada apartado.
 
 ## Comprobaciones cada 12 horas
 
@@ -60,7 +61,7 @@ por tener la app abierta. Cuando pasan 12 horas, se consulta al entrar de nuevo.
 Al vincular un medicamento también se solicita su primera comprobación.
 
 Las búsquedas y las lecturas de documentos son acciones explícitas del usuario
-y también tienen caché de 12 horas por búsqueda/documento. Un intento fallido se
+y también tienen caché de 12 horas por búsqueda/documento/país. Un intento fallido se
 conserva durante 12 horas para evitar consultas repetidas si la fuente está caída.
 En ese caso se mantiene el resultado anterior y se muestra que la información
 **no está actualizada**, junto con las fechas del último intento y del último éxito.
@@ -76,9 +77,10 @@ históricos: la ficha **Información** refleja el estado de la vinculación actu
 
 No se necesita una clave API ni nuevas variables del stack. Dockhand usa los
 compose existentes. El contenedor necesita acceso HTTPS saliente a
-`cima.aemps.es`; Vademécum se abre desde el navegador. No se envían a las fuentes
+`cima.aemps.es` y `www.vademecum.es`. No se envían a las fuentes
 tu usuario, contraseña, pauta, tomas, recetas ni existencias. Se consulta el
-nombre buscado, el registro del medicamento y el código nacional.
+nombre buscado, el registro del medicamento, el código nacional y la URL y país
+elegidos para las equivalencias.
 
 La actualización migra automáticamente la base al esquema 2 y, antes de migrar
 una base del esquema 1, guarda una copia consistente en

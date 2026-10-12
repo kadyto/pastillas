@@ -15,6 +15,14 @@ SUPPLY = dict(cn='999001', nombre='Envase de prueba, 28 cápsulas', fini=1791712
 DOCUMENT = [dict(seccion='1',titulo='Documento sintético para pruebas',orden=1,
                  contenido='<p>Contenido de prueba del documento oficial.</p><table><tr><th>Campo</th><td>Valor</td></tr></table><script>window.injected=true</script>'),
             dict(seccion='2',titulo='Otra sección',orden=2,contenido='<p>Más contenido de prueba.</p>')]
+EQUIVALENTS = '''<h1>Equivalencias internacionales</h1><label>Seleccionar país:
+<select name="pais" id="pais"><option value="?code=de" selected>Alemania</option><option value="?code=fr">Francia</option></select></label>
+<p>1 equivalencias en Alemania</p><a href="/alemania/medicamento/1/prueba-capsule"><strong>MEDICAMENTO EQUIVALENTE DE PRUEBA</strong><span>Cápsula de prueba</span><span>Vía oral</span></a>'''
+
+def equivalents(url):
+    if url.endswith('?code=fr'):
+        return EQUIVALENTS.replace('?code=de" selected','?code=de"').replace('?code=fr"','?code=fr" selected').replace('Alemania</p>','Francia</p>').replace('/alemania/','/francia/').replace('EQUIVALENTE DE PRUEBA','EQUIVALENTE FRANCÉS DE PRUEBA')
+    return EQUIVALENTS
 
 def fetch(endpoint):
     if endpoint.startswith('medicamentos?'):

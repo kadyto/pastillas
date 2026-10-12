@@ -40,6 +40,9 @@ let browser,page;
   await page.getByRole('button',{name:'Equivalencias',exact:true}).click();
   assert.equal(await page.getByRole('link',{name:'Consultar equivalencias en Vademécum'}).getAttribute('href'),
     'https://www.vademecum.es/espana/equivalencias/27631/omacor-1000-mg-capsulas-blandas');
+  await page.getByText('MEDICAMENTO EQUIVALENTE DE PRUEBA',{exact:true}).waitFor();
+  await page.getByLabel('País de las equivalencias').selectOption('fr');
+  await page.getByText('MEDICAMENTO EQUIVALENTE FRANCÉS DE PRUEBA',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Avisos',exact:true}).click();
   fs.mkdirSync('test-results',{recursive:true});
   await page.screenshot({path:'test-results/medicine-information-desktop.png',fullPage:true});
@@ -72,7 +75,7 @@ let browser,page;
   await page.evaluate(()=>fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
   await page.evaluate(()=>fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
   await page.evaluate(()=>fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
-  for(const [path,method] of [[`information`,'GET'],[`document?type=2`,'GET'],['information','POST'],['information','DELETE']]){
+  for(const [path,method] of [[`information`,'GET'],[`document?type=2`,'GET'],['equivalents?country=fr','GET'],['information','POST'],['information','DELETE']]){
     const code=await page.evaluate(async({url,method})=>{const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:method==='GET'?undefined:'{}'});return r.status;},{url:`/api/medications/${med.id}/${path}`,method});
     assert.equal(code,404);
   }

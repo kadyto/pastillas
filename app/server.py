@@ -191,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, medicine_info.search(query.get('q', [''])[0], page))
         if path == '/api/medicine-catalog' and method == 'GET':
             return self.send(200, medicine_info.catalog_public(query.get('nregistro', [''])[0]))
-        match = re.fullmatch(r'/api/medications/(\d+)/(information|document)', path)
+        match = re.fullmatch(r'/api/medications/(\d+)/(information|document|equivalents)', path)
         if match:
             ident, action = int(match[1]), match[2]
             service.owned(db, 'medications', ident, user['id'])
@@ -200,6 +200,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not info:
                     raise Invalid('Vincula antes el medicamento a CIMA.')
                 return self.send(200, medicine_info.document(info['link']['nregistro'], query.get('type', ['2'])[0]))
+            if action == 'equivalents' and method == 'GET':
+                info = medicine_info.information(db, ident)
+                if not info or not info['link']['vademecum_url']:
+                    raise Invalid('Añade la URL de Vademécum para consultar equivalencias.')
+                return self.send(200, medicine_info.equivalents(info['link']['vademecum_url'],query.get('country',[''])[0]))
             if action == 'information' and method == 'GET':
                 return self.send(200, medicine_info.information(db, ident))
             if action == 'information' and method == 'POST':

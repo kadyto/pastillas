@@ -86,6 +86,109 @@ def equivalents_url(value):
     return vademecum_url(value).replace('/espana/medicamento/', '/espana/equivalencias/') if value else ''
 
 
+def fetch_vademecum(url):
+    parsed = urlsplit(url)
+    if (parsed.scheme != 'https' or parsed.netloc != 'www.vademecum.es'
+            or not re.fullmatch(r'/espana/equivalencias/\d{1,12}/[a-z0-9-]+', parsed.path)
+            or (parsed.query and not re.fullmatch(r'code=[a-z]{2}',parsed.query)) or parsed.fragment):
+        raise Invalid('URL de equivalencias no válida.')
+    request = urllib.request.Request(url, headers={'Accept':'text/html', 'User-Agent':'Pastillas/0.2 (+https://github.com/kadyto/pastillas)'})
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(request,timeout=8) as response:
+            content = response.read(MAX_RESPONSE + 1)
+            if len(content) > MAX_RESPONSE:
+                raise ValueError('Respuesta demasiado grande')
+            return content.decode('utf-8')
+    except (OSError, ValueError):
+        raise SourceUnavailable('Vademécum no permite consultar las equivalencias en este momento. Abre la página original; se respetan los accesos que requieran registro.') from None
+
+
+class VademecumPage(HTMLParser):
+    """Extrae nombres y enlaces públicos, sin incorporar HTML ni scripts ajenos."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.medicines = []; self.selectors = []; self.text = []
+        self.anchor = None; self.selector = None; self.option = None; self.ignored = []
+        self.list_started = False
+    def handle_starttag(self,tag,attrs):
+        attrs = dict(attrs)
+        if tag in ('script','style','template'):
+            self.ignored.append(tag)
+        if self.ignored:
+            return
+        if tag == 'a':
+            self.anchor = dict(url=attrs.get('href',''),parts=[])
+        if tag == 'select':
+            self.selector = dict(name=attrs.get('name',''),id=attrs.get('id',''),options=[])
+        if tag == 'option' and self.selector is not None:
+            self.option = dict(value=attrs.get('value',''),selected='selected' in attrs,parts=[])
+    def handle_endtag(self,tag):
+        if self.ignored:
+            if tag == self.ignored[-1]:
+                self.ignored.pop()
+            return
+        if tag == 'a' and self.anchor:
+            item = self.anchor; self.anchor = None
+            match = re.fullmatch(r'/([a-z-]+)/medicamento/\d+/[^?#]+',item['url'])
+            if match and self.list_started and item['parts']:
+                self.medicines.append(dict(name=item['parts'][0],details=' · '.join(item['parts'][1:]),
+                                           country_slug=match[1],url='https://www.vademecum.es'+item['url']))
+        if tag == 'option' and self.option is not None:
+            self.option['label'] = ' '.join(self.option.pop('parts'))
+            self.selector['options'].append(self.option);self.option = None
+        if tag == 'select' and self.selector is not None:
+            self.selectors.append(self.selector);self.selector = None
+    def handle_data(self,value):
+        if self.ignored or not value.strip():
+            return
+        value = re.sub(r'\s+',' ',value).strip()
+        self.text.append(value)
+        if re.search(r'\b\d+\s+equivalencias?\b',value,re.I):
+            self.list_started = True
+        if self.anchor is not None:
+            self.anchor['parts'].append(value)
+        if self.option is not None:
+            self.option['parts'].append(value)
+
+
+def parse_equivalents(content):
+    page = VademecumPage();page.feed(content);page.close()
+    selector = next((s for s in page.selectors if re.search('pais|country',s['name']+' '+s['id'],re.I)),None)
+    count = re.search(r'\b(\d+)\s+equivalencias?\b',' '.join(page.text),re.I)
+    if not selector or not selector['options'] or not count:
+        raise SourceUnavailable('Vademécum no devuelve la lista pública de equivalencias. Consulta el original.')
+    countries = [dict(code=o['value'][6:],name=o['label']) for o in selector['options']
+                 if re.fullmatch(r'\?code=[a-z]{2}',o['value']) and o['label']]
+    chosen = next((o for o in selector['options'] if o['selected']),selector['options'][0])
+    if not countries or (int(count[1]) and not page.medicines):
+        raise SourceUnavailable('La lista pública de Vademécum ha cambiado de formato. Consulta el original.')
+    return dict(source='Vademécum.es',countries=countries,country=chosen['value'][6:],country_name=chosen['label'],results=page.medicines)
+
+
+def equivalents(url, country='', path=None):
+    url = equivalents_url(url)
+    if not url:
+        raise Invalid('Añade la URL de Vademécum para consultar equivalencias.')
+    key = 'vade:' + hashlib.sha256(url.encode()).hexdigest()
+    result = dict(cached(key,lambda:parse_equivalents(fetch_vademecum(url)),path))
+    if country:
+        if not isinstance(country,str) or country not in [c['code'] for c in result['countries']]:
+            raise Invalid('Elige uno de los países disponibles en Vademécum.')
+        if country != result['country']:
+            url += '?code=' + country
+            key = 'vade:' + hashlib.sha256(url.encode()).hexdigest()
+            def load():
+                item = parse_equivalents(fetch_vademecum(url))
+                if item['country'] != country:
+                    raise SourceUnavailable('Vademécum no devuelve el país seleccionado. Consulta el original.')
+                return item
+            result = dict(cached(key,load,path))
+    with connect(path) as db:
+        result['checked_at'] = db.execute('SELECT checked_at FROM medicine_cache WHERE cache_key=?',(key,)).fetchone()[0]
+    result['url'] = url
+    return result
+
+
 def safe_link(value):
     if not isinstance(value, str) or len(value) > 2000:
         return ''
