@@ -22,6 +22,12 @@ es una estimación según la pauta, no una prueba de que hayas tomado el medicam
 Los recordatorios siguen funcionando aunque la toma se haya asumido. Se limitan
 a los últimos diez minutos para no enviar avisos acumulados tras apagar el NAS.
 
+En **Hoy**, la tarjeta **Tomas descontadas** muestra cuántas tomas ya han aplicado
+su descuento, junto al total programado para el día seleccionado. Por ejemplo,
+«1 toma descontada de 2 programadas» indica que la otra aún no se ha descontado.
+Pulsa la tarjeta para ver el detalle. Los filtros **Próximas**, **Descontadas** y
+**Omitidas** permiten consultar cada grupo; no necesitas confirmar las próximas.
+
 ## Si no tomaste una dosis
 
 Pulsa **No la tomé** en la agenda. La toma queda omitida y devuelve al stock lo
