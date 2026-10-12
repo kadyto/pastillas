@@ -60,7 +60,7 @@ def timestamp(value, label="Fecha", optional=False):
         raise Invalid(f"{label}: fecha válida con zona horaria, entre 2000 y 2100.") from None
 
 
-def date(value):
+def date(value, label="Fecha de renovación"):
     if value in (None, ""):
         return None
     try:
@@ -69,7 +69,7 @@ def date(value):
             raise ValueError()
         return dt.strftime("%Y-%m-%d")
     except (ValueError, TypeError):
-        raise Invalid("Fecha de renovación no válida.") from None
+        raise Invalid(f"{label} no válida.") from None
 
 
 def local_timestamp(value, tz, label, optional=False):
@@ -139,6 +139,7 @@ def medication_input(data, default_zone):
         reminders=boolean(data.get("reminders", True), "Avisos"), warning_days=warning,
         prescription_id=prescription_id,
         instructions=text(data.get("instructions", ""), "Indicaciones", 4000),
+        expiry_date=date(data.get("expiry_date"), "Fecha de caducidad"),
     )
 
 

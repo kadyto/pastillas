@@ -216,10 +216,11 @@ class MigrationTests(unittest.TestCase):
                 user=db.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
                 service.medication_save(db,user,dict(name='Conservado',form='Pastillas',unit='pastillas',dose=1,stock=40,schedule='as_needed',start_at='2026-10-11T08:00:00Z'),now=NOW)
                 db.execute('DROP TABLE medicine_notice_seen');db.execute('DROP TABLE medicine_links');db.execute('DROP TABLE medicine_cache')
+                db.execute('ALTER TABLE medications DROP COLUMN expiry_date')
                 db.execute('PRAGMA user_version=1')
             initialize(path);initialize(path)
             with connect(path) as db:
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],4)
                 self.assertEqual(db.execute('SELECT stock FROM medications').fetchone()[0],40000)
                 self.assertTrue(auth.verify_password('contrasena-larga-123',db.execute('SELECT password FROM users').fetchone()[0]))
             with sqlite3.connect(path+'.pre-v2.sqlite') as db:

@@ -57,3 +57,7 @@ dialog{color:var(--text);background:var(--surface);border:1px solid var(--line);
 .stat-link{display:flex;align-items:center;gap:5px;margin-top:8px;color:var(--primary);font-size:.7rem;font-weight:650}
 .agenda-tabs{flex-wrap:wrap;max-width:100%}
 #daily-doses{scroll-margin-top:20px}
+
+.expiry-note{margin:0 0 12px}
+.expiry-note .status{white-space:normal;overflow-wrap:anywhere}
+.inventory-stock .expiry-note{margin:8px 0 0}

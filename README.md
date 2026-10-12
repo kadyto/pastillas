@@ -23,6 +23,7 @@ Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fij
 ## Qué puedes hacer
 
 - **Medicamentos libres:** nombre, marca, presentación (pastillas, gotas, jarabes, cápsulas, cremas…), concentración del envase e indicaciones.
+- **Caducidad opcional:** guarda la fecha del envase al crear o editar un medicamento, también si lo tomas según necesidad. Se muestra en Medicamentos y Existencias, resaltando si caduca hoy o ya ha caducado. Si tienes varios envases, indica la fecha más próxima.
 - **Cantidades fraccionarias:** media pastilla, 5 ml o 2 gotas, con hasta tres decimales. Se usan milésimas enteras internamente para evitar errores de redondeo.
 - **Pautas:** cada 6, 8, 12, 24 horas o intervalo personalizado de 1–720 horas; horas fijas del día; según necesidad. Fecha de inicio, fin opcional, zona horaria y pausa.
 - **Agenda automática:** las tomas programadas se asumen y descuentan del stock a su hora, sin tener que marcarlas. Puedes indicar «No la tomé» para devolver el descuento. Las tomas según necesidad se registran manualmente.

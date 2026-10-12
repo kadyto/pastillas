@@ -45,6 +45,8 @@ def medication_save(db, user, data, ident=None, now=None):
     if ident:
         inventory.sync_due(db,now,user['id'],ident)
         old = owned(db, "medications", ident, user["id"])
+        if "expiry_date" not in data:
+            fields["expiry_date"] = old["expiry_date"]
         if fields["unit"] != old["unit"] and db.execute("SELECT 1 FROM stock_movements WHERE medication_id=? LIMIT 1", (ident,)).fetchone():
             raise Invalid("La unidad de existencias tiene movimientos. Crea otro medicamento para cambiar de unidad.")
         update(db, "medications", ident, dict(fields,auto_cursor=now))
@@ -224,7 +226,7 @@ def export_data(db, user):
     doses = [dict(r) for r in db.execute("SELECT d.* FROM doses d JOIN medications m ON m.id=d.medication_id WHERE m.user_id=?", (user["id"],))]
     movements = [dict(r) for r in db.execute("SELECT s.* FROM stock_movements s JOIN medications m ON m.id=s.medication_id WHERE m.user_id=?", (user["id"],))]
     links = [dict(r) for r in db.execute('SELECT l.* FROM medicine_links l JOIN medications m ON m.id=l.medication_id WHERE m.user_id=?', (user['id'],))]
-    return dict(format="pastillas", version=3, exported_at=int(time.time()), quantity_scale=SCALE,
+    return dict(format="pastillas", version=4, exported_at=int(time.time()), quantity_scale=SCALE,
                 timezone=user["timezone"], medications=meds, prescriptions=recipes, doses=doses, stock_movements=movements,
                 medicine_links=links)
 
