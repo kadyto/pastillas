@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const {waitForDashboard}=require('./browser_helpers.cjs');
 let browser,page;
 (async()=>{
   browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox']});
@@ -25,9 +26,7 @@ let browser,page;
   await page.getByLabel('Tipo de pauta').selectOption('as_needed');
   await page.locator('dialog').getByRole('button',{name:'Añadir medicamento',exact:true}).click();
   await page.locator('dialog').waitFor({state:'hidden'});
-  await page.waitForFunction(async()=>{
-    const d=await fetch('/api/dashboard').then(r=>r.json());return d.medications[0]?.information?.status==='fresh';
-  });
+  await waitForDashboard(page,d=>d.medications[0]?.information?.status==='fresh');
   await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
   await page.getByRole('button',{name:'Información',exact:true}).click();
   await page.getByRole('heading',{name:'AVISO SINTÉTICO: comprobar la presentación'}).waitFor();
@@ -57,9 +56,7 @@ let browser,page;
   await page.getByRole('button',{name:'Vincular este medicamento',exact:true}).click();
   await page.getByRole('button',{name:'Guardar cambios',exact:true}).click();
   await page.locator('dialog').waitFor({state:'hidden'});
-  await page.waitForFunction(async()=>{
-    const d=await fetch('/api/dashboard').then(r=>r.json());return d.medications[0]?.information?.status==='fresh'&&d.medications[0].information.link.cn==='999002';
-  });
+  await waitForDashboard(page,d=>d.medications[0]?.information?.status==='fresh'&&d.medications[0].information.link.cn==='999002');
   let dashboard=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
   const med=dashboard.medications[0];
   assert.equal(med.stock,28);assert.equal(med.dose,0.5);assert.equal(med.schedule,'as_needed');

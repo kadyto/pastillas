@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {waitForDashboard}=require('./browser_helpers.cjs');
 let activePage, activeBrowser;
 
 (async () => {
@@ -62,9 +63,7 @@ let activePage, activeBrowser;
     const response=await fetch(`/api/medications/${m.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!response.ok)throw new Error(await response.text());return at;
   });
-  await page.waitForFunction(async at=>{
-    const d=await fetch('/api/dashboard').then(r=>r.json());return d.agenda.some(t=>t.scheduled_at===at&&t.automatic);
-  },scheduled);
+  await waitForDashboard(page,d=>d.agenda.some(t=>t.scheduled_at===scheduled&&t.automatic));
   await page.reload();
   await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
   await page.locator('.dose-row.taken').first().waitFor();
