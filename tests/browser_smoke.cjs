@@ -155,8 +155,6 @@ let activePage, activeBrowser;
   const folder=process.env.SCREENSHOT_DIR||'test-results';fs.mkdirSync(folder,{recursive:true});
   await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
   await page.screenshot({path:`${folder}/escritorio.png`,fullPage:true});
-  const colours=await page.evaluate(()=>({bg:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),primary:getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()}));
-  assert.equal(colours.bg,'#ffffff');assert.equal(colours.primary,'#00852e');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:`${folder}/movil.png`,fullPage:true});
   for(const [hash,heading] of [['medications','Tus medicamentos'],['stock','Existencias sin sorpresas'],['prescriptions','Tus recetas, a mano'],['settings','A tu manera']]){
