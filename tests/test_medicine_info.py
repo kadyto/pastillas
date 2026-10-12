@@ -219,7 +219,7 @@ class MigrationTests(unittest.TestCase):
                 db.execute('PRAGMA user_version=1')
             initialize(path);initialize(path)
             with connect(path) as db:
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
                 self.assertEqual(db.execute('SELECT stock FROM medications').fetchone()[0],40000)
                 self.assertTrue(auth.verify_password('contrasena-larga-123',db.execute('SELECT password FROM users').fetchone()[0]))
             with sqlite3.connect(path+'.pre-v2.sqlite') as db:

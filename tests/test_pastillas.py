@@ -48,22 +48,23 @@ class InventoryTests(DatabaseTests):
         self.assertEqual(first, second)
         self.assertEqual(self.db.execute("SELECT stock FROM medications").fetchone()[0], 10000)
         self.assertEqual(self.db.execute("SELECT count(*) FROM doses").fetchone()[0], 1)
-        service.undo_dose(self.db, self.user_id, first)
+        service.undo_dose(self.db, self.user_id, first,NOW)
         self.assertEqual(self.db.execute("SELECT stock FROM medications").fetchone()[0], 10500)
         total = self.db.execute("SELECT sum(amount) FROM stock_movements").fetchone()[0]
         self.assertEqual(total, 10500)
-        with self.assertRaises(service.NotFound):
-            service.undo_dose(self.db, self.user_id, first)
+        service.undo_dose(self.db,self.user_id,first,NOW)
+        self.assertEqual(self.db.execute('SELECT stock FROM medications').fetchone()[0],10500)
 
-    def test_skipped_dose_does_not_consume_and_status_cannot_overwrite(self):
+    def test_skipped_dose_can_be_restored_once(self):
         med = self.med()
         service.record_dose(self.db, self.user_id, med["id"], dict(scheduled_at=NOW, status="skipped"), NOW)
         self.assertEqual(self.db.execute("SELECT stock FROM medications").fetchone()[0], 10500)
-        with self.assertRaises(service.Conflict):
-            service.record_dose(self.db, self.user_id, med["id"], dict(scheduled_at=NOW), NOW)
+        service.record_dose(self.db,self.user_id,med['id'],dict(scheduled_at=NOW),NOW)
+        service.record_dose(self.db,self.user_id,med['id'],dict(scheduled_at=NOW),NOW)
+        self.assertEqual(self.db.execute('SELECT stock FROM medications').fetchone()[0],10000)
 
     def test_insufficient_stock_cannot_create_dose(self):
-        med = self.med(stock="0.25")
+        med = self.med(stock="0.25",schedule='as_needed')
         with self.assertRaises(service.Conflict):
             service.record_dose(self.db, self.user_id, med["id"], dict(scheduled_at=NOW), NOW)
         self.assertEqual(self.db.execute("SELECT count(*) FROM doses").fetchone()[0], 0)

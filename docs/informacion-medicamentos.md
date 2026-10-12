@@ -82,7 +82,7 @@ tu usuario, contraseña, pauta, tomas, recetas ni existencias. Se consulta el
 nombre buscado, el registro del medicamento, el código nacional y la URL y país
 elegidos para las equivalencias.
 
-La actualización migra automáticamente la base al esquema 2 y, antes de migrar
+La versión 0.2.0 incorporó el esquema 2 y, antes de migrar
 una base del esquema 1, guarda una copia consistente en
 `DATABASE_PATH.pre-v2.sqlite` (normalmente `/data/pastillas.sqlite.pre-v2.sqlite`).
 Conserva las cuentas, sesiones, medicamentos, tomas, recetas y existencias.
@@ -92,3 +92,7 @@ Haz igualmente una copia de seguridad antes de actualizar tu instalación.
 Fuentes: [documentación REST de CIMA](https://sede.aemps.gob.es/docs/CIMA-REST-API_1_19.pdf),
 [problemas de suministro de AEMPS](https://www.aemps.gob.es/profesional-sanitario-2/problemas-de-suministro-de-medicamentos/)
 y [Vademécum.es](https://www.vademecum.es/).
+
+Desde 0.3.0 el esquema es 3: antes de actualizar una base anterior se guarda
+`DATABASE_PATH.pre-v3.sqlite`. La vinculación y la caché médica se conservan.
+[Funcionamiento del stock automático](stock-automatico.md).

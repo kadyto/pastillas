@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 
 SCHEMA = """
@@ -31,13 +32,15 @@ CREATE TABLE IF NOT EXISTS medications (
  active INTEGER NOT NULL DEFAULT 1, reminders INTEGER NOT NULL DEFAULT 1,
  warning_days INTEGER NOT NULL DEFAULT 7,
  prescription_id INTEGER REFERENCES prescriptions(id) ON DELETE SET NULL,
- instructions TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL
+ instructions TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+ auto_cursor INTEGER NOT NULL DEFAULT 0, stock_verified_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS doses (
  id INTEGER PRIMARY KEY, medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
  scheduled_at INTEGER NOT NULL, recorded_at INTEGER NOT NULL,
  status TEXT NOT NULL CHECK(status IN ('taken','skipped')), amount INTEGER NOT NULL,
- note TEXT NOT NULL DEFAULT '', UNIQUE(medication_id, scheduled_at)
+ note TEXT NOT NULL DEFAULT '', automatic INTEGER NOT NULL DEFAULT 0,
+ expected_amount INTEGER NOT NULL DEFAULT 0, UNIQUE(medication_id, scheduled_at)
 );
 CREATE TABLE IF NOT EXISTS stock_movements (
  id INTEGER PRIMARY KEY, medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
@@ -70,7 +73,6 @@ CREATE TABLE IF NOT EXISTS medicine_notice_seen (
  medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
  notice_key TEXT NOT NULL, PRIMARY KEY(medication_id,notice_key)
 );
-PRAGMA user_version = 2;
 """
 
 
@@ -134,7 +136,7 @@ def initialize(path=None):
         with connect(path) as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError("La base de datos pertenece a una versión más reciente.")
             if version == 1 and str(path) != ':memory:':
                 # Copia consistente incluso con WAL, antes de la primera migración.
@@ -143,6 +145,31 @@ def initialize(path=None):
                     with sqlite3.connect(backup_path) as backup:
                         db.backup(backup)
                     os.chmod(backup_path, 0o600)
+            if version in (1,2) and str(path) != ':memory:':
+                backup_path = str(path) + '.pre-v3.sqlite'
+                if not Path(backup_path).exists():
+                    backup = sqlite3.connect(backup_path)
+                    try:
+                        db.backup(backup)
+                    finally:
+                        backup.close()
+                    os.chmod(backup_path,0o600)
             db.executescript(SCHEMA)
+            # ALTER conserva las tablas existentes, sus claves y todos los movimientos.
+            if version in (1,2):
+                db.execute('BEGIN IMMEDIATE')
+                columns = {r[1] for r in db.execute('PRAGMA table_info(medications)')}
+                if 'auto_cursor' not in columns:
+                    db.execute('ALTER TABLE medications ADD COLUMN auto_cursor INTEGER NOT NULL DEFAULT 0')
+                if 'stock_verified_at' not in columns:
+                    db.execute('ALTER TABLE medications ADD COLUMN stock_verified_at INTEGER')
+                db.execute('UPDATE medications SET auto_cursor=?',(int(time.time()),))
+                columns = {r[1] for r in db.execute('PRAGMA table_info(doses)')}
+                if 'automatic' not in columns:
+                    db.execute('ALTER TABLE doses ADD COLUMN automatic INTEGER NOT NULL DEFAULT 0')
+                if 'expected_amount' not in columns:
+                    db.execute('ALTER TABLE doses ADD COLUMN expected_amount INTEGER NOT NULL DEFAULT 0')
+                    db.execute('UPDATE doses SET expected_amount=amount')
+            db.execute('PRAGMA user_version=3')
     except sqlite3.OperationalError as error:
         raise StorageError(storage_message(path, str(error))) from error

@@ -1,6 +1,6 @@
 # Pastillas
 
-Tu botiquín, al día. Aplicación web en español para gestionar **medicamentos, recetas, tomas y existencias**, alojada en tu propio servidor con Docker. Interfaz adaptable a móvil y escritorio, tema claro/oscuro y acceso por usuario.
+Tu botiquín, al día. Aplicación web en español para gestionar **medicamentos, recetas, tomas y existencias**, alojada en tu propio servidor con Docker. Interfaz adaptable a móvil y escritorio, fondo blanco y verde de farmacia, tema oscuro opcional y acceso por usuario.
 
 ## Instalar con Dockhand
 
@@ -25,8 +25,8 @@ Puedes acceder desde cualquier dominio, IP o puerto; no hay una URL pública fij
 - **Medicamentos libres:** nombre, marca, presentación (pastillas, gotas, jarabes, cápsulas, cremas…), concentración del envase e indicaciones.
 - **Cantidades fraccionarias:** media pastilla, 5 ml o 2 gotas, con hasta tres decimales. Se usan milésimas enteras internamente para evitar errores de redondeo.
 - **Pautas:** cada 6, 8, 12, 24 horas o intervalo personalizado de 1–720 horas; horas fijas del día; según necesidad. Fecha de inicio, fin opcional, zona horaria y pausa.
-- **Agenda:** consulta cualquier día; confirma, omite o deshaz una toma. Una toma confirmada descuenta sus existencias una sola vez. Las omitidas no consumen nada. No permite confirmar si falta cantidad.
-- **Existencias:** compras, precio opcional y correcciones del total contado; historial de movimientos. Previsión de la primera toma futura que no se podrá cubrir y antelación de reposición configurable por medicamento.
+- **Agenda automática:** las tomas programadas se asumen y descuentan del stock a su hora, sin tener que marcarlas. Puedes indicar «No la tomé» para devolver el descuento. Las tomas según necesidad se registran manualmente.
+- **Existencias:** compras, precio opcional, correcciones y **Comprobar stock** para comparar la previsión con la cantidad contada y guardar la revisión; historial de movimientos. Previsión de la primera toma futura que no se podrá cubrir y antelación de reposición configurable por medicamento.
 - **Recetas:** referencia, profesional, indicaciones y fecha de renovación; vinculación con medicamentos y aviso desde siete días antes.
 - **Información de medicamentos:** búsqueda por nombre o URL de Vademécum, selección de envase CIMA/AEMPS, prospecto y ficha técnica dentro de la app, notas de seguridad y problemas de suministro. Comprobaciones al entrar, con caché persistente de 12 horas. Las equivalencias internacionales públicas de Vademécum se consultan por país dentro de la app. [Uso y alcance de la integración](docs/informacion-medicamentos.md).
 - **Avisos:** en la app, en el navegador con la web abierta y, opcionalmente, en el móvil con **ntfy aunque cierres la web**.
@@ -42,7 +42,7 @@ La aplicación empieza vacía. Los medicamentos y sus pautas los introduce el us
 3. Elige una unidad común para las existencias, las compras y las tomas. Por ejemplo, `ml` para un jarabe y `pastillas` para comprimidos.
 4. Indica la cantidad por toma y el total disponible. Dos cajas de 30 pastillas son **60 pastillas**, no 2 cajas.
 5. Configura la pauta y la primera toma. Las fechas del formulario usan la zona horaria indicada allí.
-6. En **Hoy**, pulsa **Tomada** después de tomarla. En **Existencias**, registra las siguientes compras.
+6. Las tomas programadas se descontarán automáticamente a su hora. Si no tomas una, pulsa **No la tomé**. En **Existencias**, registra compras y utiliza **Comprobar stock** para contar lo que queda.
 
 No se convierten unidades: si cuentas gotas, registra existencias en gotas; si cuentas mililitros, también la cantidad por toma debe estar en mililitros. La concentración del envase es un campo informativo libre.
 
@@ -50,9 +50,9 @@ No se convierten unidades: si cuentas gotas, registra existencias en gotas; si c
 
 Los intervalos son horas reales desde la primera toma, incluidas las noches. Las horas fijas siguen el reloj local de la zona elegida. En el cambio a horario de verano, una hora fija inexistente se desplaza hacia delante por el salto de hora; dos horas que coincidan se cuentan como una toma. En el cambio de otoño, una hora repetida se programa una sola vez, en su primera aparición. No se admite una fecha de inicio local inexistente. Se conservan las tomas registradas al editar o pausar una pauta.
 
-La previsión parte de las existencias actuales y cuenta las **tomas futuras**. Las tomas pasadas pendientes no se descuentan ni se dan por tomadas. La primera toma futura sin cantidad suficiente es la fecha de reposición mostrada. Si las existencias cubren todo un tratamiento con fecha de fin, se indica expresamente. Los medicamentos según necesidad muestran tomas disponibles, sin inventar una fecha de agotamiento. Las previsiones diarias se limitan al año 2100.
+La previsión parte de las existencias actuales y cuenta las **tomas futuras**. Las tomas programadas vencidas se registran como **asumidas** y se descuentan automáticamente; esto es una estimación de inventario, no una confirmación de que hayas ingerido el medicamento. Las tomas anteriores al alta o a la actualización del cálculo no se descuentan retroactivamente. La primera toma futura sin cantidad suficiente es la fecha de reposición mostrada. Si las existencias cubren todo un tratamiento con fecha de fin, se indica expresamente. Los medicamentos según necesidad muestran tomas disponibles, sin inventar una fecha de agotamiento. Las previsiones diarias se limitan al año 2100.
 
-Los avisos de toma se generan cada 30 segundos, con una ventana de recuperación de 10 minutos; no se envía una acumulación de avisos antiguos tras apagar el NAS. Las existencias y recetas generan como máximo un aviso diario por registro. Se guardan 90 días de avisos y el historial completo de tomas y movimientos. El servidor debe estar encendido y con su reloj correcto.
+Los descuentos y avisos de toma se procesan cada 30 segundos. Si el contenedor se apaga, los descuentos pendientes se recuperan al arrancar, sin repetirlos. Los avisos tienen una ventana de recuperación de 10 minutos; no se envía una acumulación de avisos antiguos tras apagar el NAS. Las existencias y recetas generan como máximo un aviso diario por registro. Se guardan 90 días de avisos y el historial completo de tomas y movimientos. [Descuento automático y comprobaciones de stock](docs/stock-automatico.md). El servidor debe estar encendido y con su reloj correcto.
 
 ## Avisos en el móvil
 

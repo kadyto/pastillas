@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import __version__
-from . import alerts, auth, medicine_info, service
+from . import alerts, auth, inventory, medicine_info, service
 from .db import StorageError, connect, initialize
 from .domain import Invalid
 
@@ -182,6 +182,8 @@ class Handler(BaseHTTPRequestHandler):
                 FAILED_LOGINS.pop(ip, None)
             return self.send(200, auth.public_user(user), headers=self.cookie(token))
         user = self.user(db)
+        if method == 'GET' and (path in ('/api/dashboard','/api/agenda','/api/export') or re.fullmatch(r'/api/medications/\d+/history',path)):
+            inventory.sync_due(db,now,user['id'])
         # Las fuentes se consultan sin mantener una transacción de lectura/escritura.
         if path == '/api/medicine-search' and method == 'GET':
             try:
@@ -258,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, dict(id=result))
         match = re.fullmatch(r"/api/doses/(\d+)", path)
         if match and method == "DELETE":
-            service.undo_dose(db, user["id"], int(match[1]))
+            service.undo_dose(db, user["id"], int(match[1]),now)
             db.commit()
             return self.send(200, dict(ok=True))
         match = re.fullmatch(r"/api/prescriptions(?:/(\d+))?", path)

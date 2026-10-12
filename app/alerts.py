@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from .db import connect
+from . import inventory
 from .domain import SCALE, forecast, occurrences, zone
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def add(db, user_id, key, title, message, kind, now):
 
 
 def generate(db, now):
+    inventory.sync_due(db,now)
     for user in db.execute("SELECT * FROM users").fetchall():
         tz = zone(user["timezone"])
         today = datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")
@@ -35,7 +37,9 @@ def generate(db, now):
             if med["reminders"]:
                 # No se acumulan avisos antiguos tras apagar el NAS. La agenda conserva las tomas pendientes.
                 for at in occurrences(med, now - 600, now):
-                    if not db.execute("SELECT 1 FROM doses WHERE medication_id=? AND scheduled_at=?", (med["id"], at)).fetchone():
+                    recorded = db.execute("SELECT status,automatic FROM doses WHERE medication_id=? AND scheduled_at=?",(med['id'],at)).fetchone()
+                    # Un descuento estimado no debe cancelar el recordatorio de tomarlo.
+                    if not recorded or (recorded['status']=='taken' and recorded['automatic']):
                         clock = datetime.fromtimestamp(at, tz).strftime("%H:%M")
                         add(db, user["id"], f"dose:{med['id']}:{at}", "Hora de tu toma",
                             f"{clock} · {med['name']}: {med['dose'] / SCALE:g} {med['unit']}. {med['instructions']}".strip(), "dose", now)

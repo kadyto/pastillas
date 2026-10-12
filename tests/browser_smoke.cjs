@@ -49,17 +49,38 @@ let activePage, activeBrowser;
   await saved();
   assert.equal(await page.locator('.med-card').count(),1);
 
+  // Programa una toma a segundos de distancia para verificar el descuento real
+  // sin depender de la hora del runner ni obligar a confirmar en la interfaz.
+  let data=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  const beforeAuto=data.medications[0].stock;
+  const scheduled=await page.evaluate(async()=>{
+    const d=await fetch('/api/dashboard').then(r=>r.json()),m=d.medications[0];
+    const at=Math.floor(Date.now()/1000)+3;
+    const body={name:m.name,brand:m.brand,form:m.form,strength:m.strength,unit:m.unit,dose:m.dose,
+      schedule:'interval',interval_hours:8,start_at:new Date(at*1000).toISOString(),timezone:m.timezone,
+      active:true,reminders:true,warning_days:m.warning_days,prescription_id:m.prescription_id,instructions:m.instructions};
+    const response=await fetch(`/api/medications/${m.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!response.ok)throw new Error(await response.text());return at;
+  });
+  await page.waitForFunction(async at=>{
+    const d=await fetch('/api/dashboard').then(r=>r.json());return d.agenda.some(t=>t.scheduled_at===at&&t.automatic);
+  },scheduled);
+  await page.reload();
   await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
-  await page.getByRole('button',{name:'Tomada',exact:true}).first().click();
-  await page.locator('.dose-row.taken').waitFor();
-  let data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
-  assert.equal(data.medications[0].stock,19.5);
-  await page.getByRole('button',{name:'Deshacer toma de Medicación habitual'}).click();
+  await page.locator('.dose-row.taken').first().waitFor();
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,beforeAuto-0.5);
+  const currentRow=page.locator('.dose-row.taken').filter({has:page.locator(`[data-at="${scheduled}"]`)});
+  await currentRow.getByRole('button',{name:'No la tomé',exact:true}).click();
   await page.locator('dialog').getByRole('button',{name:'Confirmar'}).click();
   await saved();
-  await page.locator('.dose-row.pending').first().waitFor();
+  await page.locator('.dose-row.skipped').waitFor();
   data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
-  assert.equal(data.medications[0].stock,20);
+  assert.equal(data.medications[0].stock,beforeAuto);
+  await page.reload();
+  await page.getByRole('heading',{name:'Tu botiquín, al día',exact:true}).waitFor();
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,beforeAuto);
 
   await page.locator('nav').getByRole('link',{name:'Existencias',exact:true}).click();
   await page.getByRole('button',{name:'Registrar compra',exact:true}).click();
@@ -68,13 +89,24 @@ let activePage, activeBrowser;
   await page.getByRole('button',{name:'Guardar existencias'}).click();
   await saved();
   data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
-  assert.equal(data.medications[0].stock,50);
+  assert.equal(data.medications[0].stock,beforeAuto+30);
   await page.getByRole('button',{name:'Registrar compra',exact:true}).click();
   await page.getByLabel('Tipo de movimiento').selectOption('adjustment');
   await page.locator('input[name=amount]').fill('5');
   await page.getByRole('button',{name:'Guardar existencias'}).click();
   await saved();
   await page.locator('.inventory-row.warn').waitFor();
+  await page.getByRole('button',{name:'Comprobar stock',exact:true}).click();
+  await page.getByLabel('Cantidad que has contado').fill('6');
+  await page.getByText('Diferencia: +1 pastillas.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Guardar existencias'}).click();
+  await saved();
+  data = await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  assert.equal(data.medications[0].stock,6);
+  assert.ok(data.medications[0].stock_verified_at);
+  const verified=await page.evaluate(()=>fetch('/api/export').then(r=>r.json()));
+  assert.ok(verified.stock_movements.some(m=>m.kind==='verification'&&m.amount===1000));
+
 
   await page.locator('nav').getByRole('link',{name:'Medicamentos',exact:true}).click();
   await page.getByRole('button',{name:'Editar',exact:true}).click();
@@ -118,11 +150,14 @@ let activePage, activeBrowser;
   const exportResult=await page.evaluate(()=>fetch('/api/export').then(r=>r.json()));
   assert.equal(exportResult.medications.length,2);
   assert.equal(exportResult.prescriptions.length,1);
-  assert.equal(exportResult.doses.length,1);
+  assert.ok(exportResult.doses.length>=2);
+  assert.ok(exportResult.doses.some(d=>d.status==='skipped'));
 
   const folder=process.env.SCREENSHOT_DIR||'test-results';fs.mkdirSync(folder,{recursive:true});
   await page.locator('nav').getByRole('link',{name:'Hoy',exact:true}).click();
   await page.screenshot({path:`${folder}/escritorio.png`,fullPage:true});
+  const colours=await page.evaluate(()=>({bg:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),primary:getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()}));
+  assert.equal(colours.bg,'#ffffff');assert.equal(colours.primary,'#00852e');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:`${folder}/movil.png`,fullPage:true});
   for(const [hash,heading] of [['medications','Tus medicamentos'],['stock','Existencias sin sorpresas'],['prescriptions','Tus recetas, a mano'],['settings','A tu manera']]){
