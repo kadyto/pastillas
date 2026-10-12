@@ -43,6 +43,7 @@ let browser,page;
   await page.getByText('MEDICAMENTO EQUIVALENTE DE PRUEBA',{exact:true}).waitFor();
   await page.getByLabel('País de las equivalencias').selectOption('fr');
   await page.getByText('MEDICAMENTO EQUIVALENTE FRANCÉS DE PRUEBA',{exact:true}).waitFor();
+  assert.ok((await page.getByRole('link',{name:'Consultar equivalencias en Vademécum'}).getAttribute('href')).endsWith('?code=fr'));
   await page.getByRole('button',{name:'Avisos',exact:true}).click();
   fs.mkdirSync('test-results',{recursive:true});
   await page.screenshot({path:'test-results/medicine-information-desktop.png',fullPage:true});

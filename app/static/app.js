@@ -374,6 +374,7 @@ async function showMedicineInfo(med) {
           try{
             const data=await api(`/medications/${med.id}/equivalents${country?'?country='+encodeURIComponent(country):''}`);
             if(!reader.isConnected)return;
+            const original=$('a',content);if(original)original.href=data.url;
             reader.innerHTML=`<label>País de las equivalencias<select id="equivalents-country">${data.countries.map(c=>`<option value="${esc(c.code)}" ${c.code===data.country?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><p class="help">${data.results.length} resultado(s) en ${esc(data.country_name)}${data.checked_at?` · Consultado: ${fullDate(data.checked_at)}`:''}</p><div class="medicine-results">${data.results.map(r=>`<article class="medicine-result"><strong>${esc(r.name)}</strong><small>${esc(r.details)}</small>${externalLink(r.url,'Ver en Vademécum','help')}</article>`).join('')||'<p>Vademécum no devuelve equivalencias para este país.</p>'}</div>`;
             $('#equivalents-country',reader).addEventListener('change',event=>load(event.target.value));
           }catch(error){if(reader.isConnected)reader.textContent=error.message;}

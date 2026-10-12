@@ -195,7 +195,8 @@ class InformationTests(DatabaseTests):
         self.assertTrue(france['checked_at'])
 
     def test_equivalent_query_cannot_fetch_other_hosts_or_invent_empty_results(self):
-        for raw in ['<p>Inicia sesión</p>',EQUIVALENTS.replace('1 equivalencias','10 equivalencias').replace('/alemania/medicamento/','/pagina/')]:
+        for raw in ['<p>Inicia sesión</p>',EQUIVALENTS.replace('1 equivalencias','10 equivalencias'),
+                    EQUIVALENTS.replace('/alemania/medicamento/','/pagina/')]:
             with self.assertRaises(info.SourceUnavailable):
                 info.parse_equivalents(raw)
         with patch.object(info,'fetch_vademecum',side_effect=equivalents):

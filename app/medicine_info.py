@@ -160,7 +160,8 @@ def parse_equivalents(content):
     countries = [dict(code=o['value'][6:],name=o['label']) for o in selector['options']
                  if re.fullmatch(r'\?code=[a-z]{2}',o['value']) and o['label']]
     chosen = next((o for o in selector['options'] if o['selected']),selector['options'][0])
-    if not countries or (int(count[1]) and not page.medicines):
+    if (not countries or chosen['value'][6:] not in [c['code'] for c in countries]
+            or int(count[1]) != len(page.medicines)):
         raise SourceUnavailable('La lista pública de Vademécum ha cambiado de formato. Consulta el original.')
     return dict(source='Vademécum.es',countries=countries,country=chosen['value'][6:],country_name=chosen['label'],results=page.medicines)
 
