@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS medicine_notice_seen (
  medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
  notice_key TEXT NOT NULL, PRIMARY KEY(medication_id,notice_key)
 );
+CREATE TABLE IF NOT EXISTS app_updates (
+ id INTEGER PRIMARY KEY CHECK(id=1), latest_version TEXT NOT NULL DEFAULT '',
+ latest_commit TEXT NOT NULL DEFAULT '', attempted_at INTEGER NOT NULL DEFAULT 0,
+ checked_at INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '',
+ deploy_status TEXT NOT NULL DEFAULT '', deploy_requested_at INTEGER NOT NULL DEFAULT 0,
+ deploy_target TEXT NOT NULL DEFAULT '', deploy_error TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO app_updates(id) VALUES (1);
 """
 
 
@@ -137,7 +145,7 @@ def initialize(path=None):
         with connect(path) as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 4:
+            if version > 5:
                 raise RuntimeError("La base de datos pertenece a una versión más reciente.")
             if version == 1 and str(path) != ':memory:':
                 # Copia consistente incluso con WAL, antes de la primera migración.
@@ -164,6 +172,15 @@ def initialize(path=None):
                     finally:
                         backup.close()
                     os.chmod(backup_path,0o600)
+            if version in (1,2,3,4) and str(path) != ':memory:':
+                backup_path = str(path) + '.pre-v5.sqlite'
+                if not Path(backup_path).exists():
+                    backup = sqlite3.connect(backup_path)
+                    try:
+                        db.backup(backup)
+                    finally:
+                        backup.close()
+                    os.chmod(backup_path,0o600)
             db.executescript(SCHEMA)
             # ALTER conserva las tablas existentes, sus claves y todos los movimientos.
             db.execute('BEGIN IMMEDIATE')
@@ -183,6 +200,6 @@ def initialize(path=None):
             columns = {r[1] for r in db.execute('PRAGMA table_info(medications)')}
             if 'expiry_date' not in columns:
                 db.execute('ALTER TABLE medications ADD COLUMN expiry_date TEXT')
-            db.execute('PRAGMA user_version=4')
+            db.execute('PRAGMA user_version=5')
     except sqlite3.OperationalError as error:
         raise StorageError(storage_message(path, str(error))) from error

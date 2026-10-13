@@ -253,6 +253,20 @@ class AlertTests(DatabaseTests):
 
 
 class AuthenticationAndApiTests(DatabaseTests):
+    def test_version_requires_login_and_only_admin_can_deploy(self):
+        with self.assertRaises(Unauthorized):
+            self.request('/api/version')
+        response = self.request('/api/version', token=self.token())
+        self.assertEqual(response[0], 200)
+        with self.assertRaises(Forbidden):
+            self.request('/api/version/update', 'POST', {}, self.token(self.other_id))
+        with patch('app.updates.request_deploy', return_value={'deploy_status': 'queued'}) as deploy:
+            response = self.request('/api/version/update', 'POST', {}, self.token())
+            self.assertEqual(response[0], 202)
+            deploy.assert_called_once()
+        with self.assertRaises(Forbidden):
+            self.request('/api/version/check', 'POST', {}, self.token(), fetch_site='cross-site')
+
     def request(self,path,method="GET",data=None,token=None,origin="http://localhost:8000",host="localhost:8000",fetch_site="same-origin"):
         handler=Handler.__new__(Handler)
         handler.command=method

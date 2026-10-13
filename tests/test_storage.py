@@ -12,7 +12,7 @@ class StorageTests(unittest.TestCase):
             path = Path(folder) / "data" / "pastillas.sqlite"
             initialize(str(path))
             with connect(str(path)) as db:
-                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 4)
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 5)
             self.assertTrue(path.is_file())
 
     @unittest.skipUnless(hasattr(os, "getuid") and os.getuid() != 0, "Requiere un usuario sin privilegios")

@@ -1,6 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $('#app'), dialog = $('#dialog');
 const paths = {
+  github: '<path d="M9 19c-4 1-4-2-6-2m12 5v-3.9c0-1 .1-1.8-.5-2.3 3.3-.4 6.8-1.6 6.8-7.2a5.6 5.6 0 0 0-1.5-3.8c.2-.4.7-1.8-.2-3.7 0 0-1.2-.4-4 1.4a13.6 13.6 0 0 0-7.2 0C5.6.7 4.4 1.1 4.4 1.1c-.9 1.9-.4 3.3-.2 3.7a5.6 5.6 0 0 0-1.5 3.8c0 5.6 3.5 6.8 6.8 7.2-.5.4-.7 1.1-.7 2.2V22"/>',
   pill: '<path d="m10.5 20.5 10-10a6.4 6.4 0 0 0-9-9l-10 10a6.4 6.4 0 0 0 9 9Z"/><path d="m8.5 8.5 7 7"/>',
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-8h6v8"/>',
   box: '<path d="m3 7 9-4 9 4v10l-9 4-9-4Z"/><path d="m3 7 9 5 9-5M12 12v9M7.5 5l9 5"/>',
@@ -27,7 +28,7 @@ const paths = {
 const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.pill}</svg>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number = value => new Intl.NumberFormat('es-ES', {maximumFractionDigits: 3}).format(value ?? 0);
-const state = {user: null, data: null, alerts: [], agenda: [], day: '', filter: 'all', medFilter: 'active', stockFilter: 'all', search: '', setup: false, version: '', ntfy: '', busy: false};
+const state = {user: null, data: null, alerts: [], agenda: [], day: '', filter: 'all', medFilter: 'active', stockFilter: 'all', search: '', setup: false, version: '', ntfy: '', busy: false, updates: null, checkingVersion: false};
 let requestVersion = 0, toastTimer, notificationIds = new Set();
 let theme;
 try { theme = localStorage.getItem('pastillas-theme') || 'light'; } catch { theme = 'light'; }
@@ -64,7 +65,7 @@ async function api(path, method = 'GET', body) {
 }
 const empty = (title, message, action = '', label = '') => `<div class="empty"><div class="empty-icon">${icon('pill',30)}</div><h2>${title}</h2><p>${message}</p>${action ? button(action,label,'plus','','primary') : ''}</div>`;
 function renderLogin(message = '') {
-  app.innerHTML = `<main class="login-shell" id="content"><div class="login-card"><a class="brand" href="/"> <img src="/icon.svg" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><h1>${state.setup ? 'Empezamos contigo' : 'Bienvenido a tu botiquín'}</h1><p>${state.setup ? 'Crea tu cuenta administradora para organizar medicamentos, tomas y existencias.' : 'Todo lo que necesitas para seguir tu tratamiento, en un solo lugar.'}</p><div class="error-box" id="login-error" role="alert"></div><form id="login-form"><label>Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="60"></label><label>Contraseña<input type="password" name="password" autocomplete="${state.setup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"><small>Al menos 12 caracteres.</small></label><button class="button primary" type="submit">${state.setup ? 'Crear mi cuenta' : 'Entrar'}${icon('arrow',17)}</button></form><p class="help">Tus datos se guardan en tu servidor.<br>Pastillas ${esc(state.version)}</p></div></main>`;
+  app.innerHTML = `<main class="login-shell" id="content"><div class="login-card"><a class="brand" href="/"> <img src="/icon-192.png?v=0.4.0" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><h1>${state.setup ? 'Empezamos contigo' : 'Bienvenido a tu botiquín'}</h1><p>${state.setup ? 'Crea tu cuenta administradora para organizar medicamentos, tomas y existencias.' : 'Todo lo que necesitas para seguir tu tratamiento, en un solo lugar.'}</p><div class="error-box" id="login-error" role="alert"></div><form id="login-form"><label>Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="60"></label><label>Contraseña<input type="password" name="password" autocomplete="${state.setup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"><small>Al menos 12 caracteres.</small></label><button class="button primary" type="submit">${state.setup ? 'Crear mi cuenta' : 'Entrar'}${icon('arrow',17)}</button></form><p class="help">Tus datos se guardan en tu servidor.<br><a href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">GitHub · Pastillas ${esc(state.version)}</a></p></div></main>`;
   $('#login-error').textContent = message;
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
@@ -82,7 +83,44 @@ function renderLogin(message = '') {
 }
 function shell(content) {
   const page = nav.find(n => n[0] === route());
-  app.innerHTML = `<aside class="sidebar"><a class="brand" href="#today"><img src="/icon.svg" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><nav aria-label="Navegación principal">${nav.map(([key,title,ic]) => `<a class="nav-link" href="#${key}" ${route() === key ? 'aria-current="page"' : ''}>${icon(ic)}<span>${title}</span></a>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon('shield',22)}<strong>Tu salud, en tus manos</strong>Un poco de organización.<br>Una cosa menos de la que preocuparte.</div><div class="sidebar-footer"><a href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">Pastillas ${esc(state.version)}</a><button class="icon-button" data-action="logout" aria-label="Cerrar sesión">${icon('logout',17)}</button></div></div></aside><main class="main" id="content"><div class="topbar"><div class="breadcrumb">Mi botiquín &nbsp;/&nbsp; <span>${esc(page?.[1] || 'Avisos')}</span></div><a class="mobile-brand" href="#today"><img src="/icon.svg" alt="">Pastillas</a><div class="top-actions"><button class="icon-button" data-action="theme" aria-label="Cambiar a tema ${theme === 'light' ? 'oscuro' : 'claro'}">${icon(theme === 'light' ? 'moon' : 'sun',18)}</button><a class="icon-button" href="#alerts" aria-label="Avisos${state.data.unread_alerts ? `, ${state.data.unread_alerts} sin leer` : ''}">${icon('bell',18)}${state.data.unread_alerts ? '<span class="dot"></span>' : ''}</a><div class="avatar" aria-hidden="true">${esc(state.user.username.slice(0,2).toUpperCase())}</div><span class="username">${esc(state.user.username)}</span></div></div>${!navigator.onLine ? '<div class="offline" role="alert">Sin conexión. Conecta con el servidor para registrar tomas y compras.</div>' : ''}${medicineBanner()}${content}<p class="footer-note">Sigue la pauta indicada por tu profesional sanitario. Las previsiones dependen de la pauta y las existencias registradas.<br>Zona horaria: ${esc(tz())} · Pastillas ${esc(state.version)}</p></main>`;
+  app.innerHTML = `<aside class="sidebar"><a class="brand" href="#today"><img src="/icon-192.png?v=0.4.0" alt=""><div>Pastillas<small>Tu botiquín, al día</small></div></a><nav aria-label="Navegación principal">${nav.map(([key,title,ic]) => `<a class="nav-link" href="#${key}" ${route() === key ? 'aria-current="page"' : ''}>${icon(ic)}<span>${title}</span></a>`).join('')}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon('shield',22)}<strong>Tu salud, en tus manos</strong>Un poco de organización.<br>Una cosa menos de la que preocuparte.</div><div class="sidebar-footer"><a href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">Pastillas ${esc(state.version)}</a><button class="icon-button" data-action="logout" aria-label="Cerrar sesión">${icon('logout',17)}</button></div></div></aside><main class="main" id="content"><div class="topbar"><div class="breadcrumb">Mi botiquín &nbsp;/&nbsp; <span>${esc(page?.[1] || 'Avisos')}</span></div><a class="mobile-brand" href="#today"><img src="/icon-192.png?v=0.4.0" alt="">Pastillas</a><div class="top-actions"><button class="icon-button" data-action="theme" aria-label="Cambiar a tema ${theme === 'light' ? 'oscuro' : 'claro'}">${icon(theme === 'light' ? 'moon' : 'sun',18)}</button><a class="icon-button" href="#alerts" aria-label="Avisos${state.data.unread_alerts ? `, ${state.data.unread_alerts} sin leer` : ''}">${icon('bell',18)}${state.data.unread_alerts ? '<span class="dot"></span>' : ''}</a><div class="avatar" aria-hidden="true">${esc(state.user.username.slice(0,2).toUpperCase())}</div><span class="username">${esc(state.user.username)}</span></div></div>${!navigator.onLine ? '<div class="offline" role="alert">Sin conexión. Conecta con el servidor para registrar tomas y compras.</div>' : ''}${medicineBanner()}${content}<p class="footer-note">Sigue la pauta indicada por tu profesional sanitario. Las previsiones dependen de la pauta y las existencias registradas.<br>Zona horaria: ${esc(tz())}</p>${versionFooter()}</main>`;
+}
+function versionFooter() {
+  const info=state.updates;
+  const checking=state.checkingVersion||info?.checking;
+  let label='Versión pendiente de comprobar', statusClass='neutral';
+  if(checking) label='Comprobando GitHub…';
+  else if(info?.error){label='No se pudo comprobar la versión';statusClass='amber';}
+  else if(info?.state==='available'){label=`Disponible: ${info.latest_version}`;statusClass='amber';}
+  else if(info?.state==='current'){label='Tienes la última versión';statusClass='';}
+  else if(info?.state==='ahead')label=`En GitHub: ${info.latest_version}`;
+  const updating=['queued','running','requested'].includes(info?.deploy_status);
+  const message=updating?'Actualización solicitada a Dockhand. Comprueba el despliegue antes de repetirla.':info?.deploy_error;
+  return `<footer class="app-footer" aria-label="Versión y código fuente"><div class="version-row"><a class="footer-repository" href="https://github.com/kadyto/pastillas" target="_blank" rel="noopener noreferrer">${icon('github',17)} GitHub</a><span>Instalada: <strong>${esc(state.version)}</strong></span><span class="status ${statusClass}" role="status">${esc(label)}</span></div><div class="footer-actions"><button type="button" class="footer-link" data-action="version-check" ${checking?'disabled':''}>${checking?'Comprobando…':'Comprobar ahora'}</button>${state.user.admin?`<button type="button" class="footer-link" data-action="version-update">${info?.update_available&&info?.deployment_configured?'Actualizar con Dockhand':'Cómo actualizar'}</button>`:''}</div><p class="version-help">${info?.checked_at?`Última comprobación correcta: ${fullDate(info.checked_at)}. `:''}Comprobación automática cada 24 horas.${info?.error?` ${esc(info.error)}`:''}</p>${message?`<p class="version-help" role="status">${esc(message)}</p>`:''}</footer>`;
+}
+function updateDialog() {
+  const info=state.updates;
+  const configured=info?.deployment_configured;
+  const updating=['queued','running','requested'].includes(info?.deploy_status);
+  openDialog('Actualizar Pastillas',`<p class="help">Versión instalada: <strong>${esc(state.version)}</strong>${info?.latest_version?` · Última comprobada en GitHub: <strong>${esc(info.latest_version)}</strong>`:''}.</p>${configured?`<p class="inline-note form-section">Dockhand descargará el contenido de GitHub, reconstruirá la imagen y recreará el stack conservando su carpeta o volumen de datos. La app puede desconectarse durante el despliegue.</p>${updating?'<p class="help form-section">Ya hay una solicitud de actualización. Revisa el despliegue en Dockhand antes de volver a intentarlo.</p>':''}<div class="form-actions">${button('close','Cerrar')}<button type="button" class="button primary" id="start-update" ${!info.update_available||info.error||updating?'disabled':''}>Actualizar con Dockhand</button></div>`:`<p class="inline-note form-section">Para actualizar desde aquí, configura el webhook del stack Git de Pastillas en Dockhand. Activa la construcción de imágenes y conserva el nombre del stack y sus datos.</p>${info?.deployment_configuration_error?`<p class="help">${esc(info.deployment_configuration_error)}</p>`:''}<div class="picker-actions"><a class="button small-button" href="https://github.com/kadyto/pastillas/blob/main/docs/actualizaciones.md" target="_blank" rel="noopener noreferrer">Configurar actualización con Dockhand</a><a class="button small-button" href="https://github.com/kadyto/pastillas/archive/refs/heads/main.tar.gz" target="_blank" rel="noopener noreferrer">Descargar código de GitHub</a></div><p class="help">Descargar el código no actualiza el contenedor. En Dockhand debes reconstruir la imagen y recrear el stack.</p><div class="form-actions">${button('close','Cerrar')}</div>`}`);
+  $('#start-update',dialog)?.addEventListener('click',async event=>{
+    const submit=event.currentTarget;submit.disabled=true;submit.textContent='Solicitando actualización…';
+    try{state.updates=await api('/version/update','POST');dialog.close();render();toast('Actualización solicitada a Dockhand.');pollDeployment(state.version);}
+    catch(error){$('#form-error').textContent=error.message;submit.disabled=false;submit.textContent='Actualizar con Dockhand';}
+  });
+}
+async function pollDeployment(previousVersion) {
+  for(let attempt=0;attempt<40;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    if(!state.user)return;
+    try{
+      const info=await api('/version');state.updates=info;state.version=info.installed_version;
+      if(info.installed_version!==previousVersion){location.reload();return;}
+      if(!dialog.open&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();
+      if(['failed','skipped','unknown','completed'].includes(info.deploy_status))return;
+    }catch{}
+  }
+  toast('Comprueba el resultado del despliegue en Dockhand.');
 }
 function heading(title, subtitle, action = '', label = '') {
   return `<div class="heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${action ? button(action,label,'plus','','primary') : ''}</div>`;
@@ -168,9 +206,9 @@ function render() {
 async function refresh() {
   if(!state.user)return;
   const version=++requestVersion;
-  const [data,alertList]=await Promise.all([api('/dashboard'),api('/alerts')]);
+  const [data,alertList,updateStatus]=await Promise.all([api('/dashboard'),api('/alerts'),api('/version')]);
   if(version!==requestVersion||!state.user)return;
-  state.data=data;state.alerts=alertList;state.day=state.day||data.today;
+  state.data=data;state.alerts=alertList;state.updates=updateStatus;state.version=updateStatus.installed_version;state.day=state.day||data.today;
   state.agenda=state.day===data.today?data.agenda:await api(`/agenda?day=${encodeURIComponent(state.day)}`);
   if(version!==requestVersion)return;
   render();notify();
@@ -261,7 +299,7 @@ async function notify() {
   for(const alert of state.alerts){
     if(notificationIds.has(alert.id)||alert.read||alert.created_at<state.data.now-90)continue;
     notificationIds.add(alert.id);
-    const options={body:alert.message,icon:'/icon.svg',tag:`pastillas-${state.user.id}-${alert.id}`};
+    const options={body:alert.message,icon:'/icon-192.png?v=0.4.0',tag:`pastillas-${state.user.id}-${alert.id}`};
     try{const registration=await navigator.serviceWorker?.ready;if(registration)await registration.showNotification(alert.title,options);else new Notification(alert.title,options);}catch{}
   }
 }
@@ -270,6 +308,14 @@ document.addEventListener('click',async event=>{
   const action=target.dataset.action,id=Number(target.dataset.id),at=Number(target.dataset.at);
   if(state.busy && !['close','theme'].includes(action))return;
   try{
+    if(action==='version-check'){
+      if(state.checkingVersion)return;
+      state.checkingVersion=true;render();
+      try{state.updates=await api('/version/check','POST');state.version=state.updates.installed_version;}
+      finally{state.checkingVersion=false;render();}
+      return;
+    }
+    if(action==='version-update')return updateDialog();
     if(action==='close'){dialog.close();return;}
     if(action==='theme'){theme=theme==='light'?'dark':'light';document.documentElement.dataset.theme=theme;try{localStorage.setItem('pastillas-theme',theme);}catch{}render();return;}
     if(action==='med-new')return medForm();

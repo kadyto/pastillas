@@ -11,7 +11,7 @@ services:
         LABEL org.opencontainers.image.title="Pastillas" \
               org.opencontainers.image.description="Medicamentos, tomas, recetas y existencias en tu servidor" \
               org.opencontainers.image.source="https://github.com/kadyto/pastillas" \
-              org.opencontainers.image.version="0.3.2"
+              org.opencontainers.image.version="0.4.0"
 
         ENV PYTHONDONTWRITEBYTECODE=1 \
             PYTHONUNBUFFERED=1 \
@@ -41,6 +41,8 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-auto}
       NTFY_BASE_URL: ${NTFY_BASE_URL:-https://ntfy.sh}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
+      DOCKHAND_WEBHOOK_URL: ${DOCKHAND_WEBHOOK_URL:-}
+      DOCKHAND_WEBHOOK_SECRET: ${DOCKHAND_WEBHOOK_SECRET:-}
       TZ: Europe/Madrid
     volumes:
       - type: bind

@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import __version__
-from . import alerts, auth, inventory, medicine_info, service
+from . import alerts, auth, inventory, medicine_info, service, updates
 from .db import StorageError, connect, initialize
 from .domain import Invalid
 
@@ -49,12 +49,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", (headers or {}).get("Cache-Control", "no-store"))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
         for key, value in (headers or {}).items():
-            self.send_header(key, value)
+            if key.lower() != 'cache-control':
+                self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -110,10 +111,13 @@ class Handler(BaseHTTPRequestHandler):
                 if self.command not in ("GET", "HEAD"):
                     return self.send(405, dict(error="Método no permitido."))
                 filename = "index.html" if path == "/" else path.lstrip("/")
+                if filename == 'icon.svg':
+                    filename = 'icon.png'  # Compatibilidad con accesos directos anteriores.
                 target = (STATIC / filename).resolve()
                 if STATIC.resolve() not in target.parents or not target.is_file():
                     return self.send(404, dict(error="Página no encontrada."))
-                return self.send(200, target.read_bytes(), mimetypes.guess_type(target)[0] or "application/octet-stream")
+                headers = {'Cache-Control': 'public, max-age=31536000, immutable'} if filename in ('icon.png','icon-192.png','favicon.png','apple-touch-icon.png') and parse_qs(parsed.query).get('v') else None
+                return self.send(200, target.read_bytes(), mimetypes.guess_type(target)[0] or "application/octet-stream", headers=headers)
             with connect() as db:
                 self.api(db, path, parse_qs(parsed.query))
         except Unauthorized as error:
@@ -182,6 +186,14 @@ class Handler(BaseHTTPRequestHandler):
                 FAILED_LOGINS.pop(ip, None)
             return self.send(200, auth.public_user(user), headers=self.cookie(token))
         user = self.user(db)
+        if path == '/api/version' and method == 'GET':
+            return self.send(200, updates.status(db, now))
+        if path == '/api/version/check' and method == 'POST':
+            return self.send(200, updates.check(force=True, now=now))
+        if path == '/api/version/update' and method == 'POST':
+            if not user['admin']:
+                raise Forbidden('Solo la cuenta administradora puede actualizar la aplicación.')
+            return self.send(202, updates.request_deploy(now=now))
         if method == 'GET' and (path in ('/api/dashboard','/api/agenda','/api/export') or re.fullmatch(r'/api/medications/\d+/history',path)):
             inventory.sync_due(db,now,user['id'])
         # Las fuentes se consultan sin mantener una transacción de lectura/escritura.
@@ -336,11 +348,14 @@ def main():
         raise SystemExit(1) from None
     with connect() as db:
         auth.initial_user(db)
+    updates.recover()
     stop = threading.Event()
     thread = threading.Thread(target=alerts.worker, args=(stop,), daemon=True)
     thread.start()
     info_thread = threading.Thread(target=medicine_info.worker, args=(stop,), daemon=True)
     info_thread.start()
+    update_thread = threading.Thread(target=updates.worker, args=(stop,), daemon=True)
+    update_thread.start()
     server = Server((os.environ.get("HOST", "0.0.0.0"), int(os.environ.get("PORT", "8000"))), Handler)
     def shutdown(signum, frame):
         stop.set()
@@ -357,6 +372,7 @@ def main():
         server.server_close()
         thread.join(timeout=7)
         info_thread.join(timeout=9)
+        update_thread.join(timeout=11)
 
 
 if __name__ == "__main__":

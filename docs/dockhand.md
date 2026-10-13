@@ -27,6 +27,8 @@ En Dockhand: **Stacks → New Stack → pastillas**. Pega el contenido íntegro 
 | `COOKIE_SECURE` | `auto` por defecto: HTTPS a través del proxy usa una cookie segura; HTTP directo también funciona. `true` obliga a HTTPS; `false` conserva el comportamiento anterior |
 | `NTFY_BASE_URL` | Por defecto `https://ntfy.sh`; cambia a tu servidor ntfy si lo tienes |
 | `NTFY_TOKEN` | Opcional, token de publicación de un servidor ntfy con autenticación |
+| `DOCKHAND_WEBHOOK_URL` | Opcional, URL del webhook del stack Git de Pastillas en Dockhand |
+| `DOCKHAND_WEBHOOK_SECRET` | Secreto de ese webhook; activa la actualización desde la cuenta administradora |
 
 Despliega con **build/construcción habilitado**. Docker descarga el archivo público `.tar.gz` de GitHub y construye la imagen automáticamente. No requiere Git en Dockhand ni una imagen previa de GHCR. La primera instalación necesita acceso a GitHub y al registro Docker para descargar Python; no descarga paquetes de pip o npm.
 
@@ -53,6 +55,10 @@ Desde la versión 0.1.1, las cookies de otras aplicaciones no invalidan la lectu
 Para actualizar un stack existente, conserva sus datos y volumen y reconstruye la imagen. Puedes cambiar `COOKIE_SECURE` a `auto`; la aplicación sigue respetando los valores explícitos `true` y `false`. Comprueba que el pie de la app muestre 0.1.1 después de reconstruir.
 
 ## Actualizar
+
+El pie de la app comprueba GitHub una vez cada 24 horas y permite forzar la
+comprobación. Puedes habilitar la actualización desde la app mediante el webhook
+del stack Git: [configuración de actualizaciones](actualizaciones.md).
 
 Haz una [copia consistente](mantenimiento.md). Conserva `DATA_DIR`, UID/GID y tus variables. En Dockhand solicita **reconstruir la imagen y recrear el stack** para descargar el `main` actual. Reiniciar sin reconstruir no cambia el código. Si Dockhand conserva la caché del contexto remoto, usa la opción de reconstruir sin caché.
 
