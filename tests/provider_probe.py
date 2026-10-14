@@ -1,6 +1,8 @@
 """Comprobación pública diagnóstica, separada de las pruebas deterministas."""
 import json
 import sys
+import time
+import urllib.error
 import urllib.request
 from urllib.parse import quote
 from pathlib import Path
@@ -38,6 +40,19 @@ except Exception as error:
     result['cima_reason_type']=type(reason).__name__ if reason is not None else None
     result['cima_ssl_verify_message']=getattr(reason,'verify_message',None)
     result['cima_reason_errno']=getattr(reason,'errno',None)
+    if isinstance(reason, TimeoutError) or isinstance(cause, TimeoutError):
+        # Distingue una fuente lenta del límite habitual de ocho segundos.
+        started=time.monotonic()
+        try:
+            request=urllib.request.Request(info.BASE+'medicamentos?nombre=omacor',headers={
+                'Accept':'application/json','User-Agent':'Pastillas (+https://github.com/kadyto/pastillas)'})
+            with urllib.request.build_opener(info.NoRedirect()).open(request,timeout=25) as response:
+                data=json.loads(response.read(info.MAX_RESPONSE+1))
+                result['cima_extended_wait']=dict(status=response.status,matches=len(info.rows(data)))
+        except (OSError,ValueError) as extended:
+            underlying=extended.reason if isinstance(extended,urllib.error.URLError) else extended
+            result['cima_extended_wait']=dict(error=info.connection_error(extended),reason_type=type(underlying).__name__)
+        result['cima_extended_wait']['elapsed_seconds']=round(time.monotonic()-started,1)
 
 # Comprueba registros de autorización nacional y centralizada por separado.
 for query in ('pravafenix',):
