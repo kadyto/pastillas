@@ -37,6 +37,8 @@ def provider(latest='0.4.1', calls=None):
 
 class VersionTests(unittest.TestCase):
     def setUp(self):
+        installed=patch('app.updates.__version__','0.4.0')
+        installed.start();self.addCleanup(installed.stop)
         self.folder = tempfile.TemporaryDirectory()
         self.path = str(Path(self.folder.name) / 'app.sqlite')
         initialize(self.path)

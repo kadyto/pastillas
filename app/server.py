@@ -205,10 +205,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, medicine_info.search(query.get('q', [''])[0], page))
         if path == '/api/medicine-catalog' and method == 'GET':
             return self.send(200, medicine_info.catalog_public(query.get('nregistro', [''])[0]))
-        match = re.fullmatch(r'/api/medications/(\d+)/(information|document|equivalents)', path)
+        match = re.fullmatch(r'/api/medications/(\d+)/(information|document|equivalents|information-check)', path)
         if match:
             ident, action = int(match[1]), match[2]
             service.owned(db, 'medications', ident, user['id'])
+            if action == 'information-check' and method == 'POST':
+                result = medicine_info.retry_information(db, user['id'], ident, now)
+                db.commit()
+                medicine_info.WAKE.set()
+                return self.send(202, result)
             if action == 'document' and method == 'GET':
                 info = medicine_info.information(db, ident)
                 if not info:

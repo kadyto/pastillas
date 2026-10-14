@@ -61,10 +61,19 @@ por tener la app abierta. Cuando pasan 12 horas, se consulta al entrar de nuevo.
 Al vincular un medicamento también se solicita su primera comprobación.
 
 Las búsquedas y las lecturas de documentos son acciones explícitas del usuario
-y también tienen caché de 12 horas por búsqueda/documento/país. Un intento fallido se
-conserva durante 12 horas para evitar consultas repetidas si la fuente está caída.
-En ese caso se mantiene el resultado anterior y se muestra que la información
-**no está actualizada**, junto con las fechas del último intento y del último éxito.
+y conservan sus resultados válidos durante 12 horas por búsqueda/documento/país.
+Si una consulta falla, puede volver a solicitarse después de un minuto.
+
+Las comprobaciones automáticas de avisos mantienen el intervalo de 12 horas,
+también si la fuente falla. En **Información**, **Reintentar comprobación** permite
+solicitar una consulta manual adicional, con un minuto de separación entre
+intentos. Se conservan los resultados anteriores hasta obtener una respuesta
+válida y se muestran las fechas del último intento y del último éxito.
+
+Los errores distinguen problemas de resolución del servidor, espera agotada,
+certificados HTTPS, respuestas HTTP y formatos inesperados. Un fallo de conexión
+se muestra como información **no actualizada**, sin interpretarlo como ausencia
+de avisos. La verificación de certificados HTTPS permanece activa.
 
 Las notas y problemas encontrados generan avisos en la app. Si ya tienes ntfy
 activado, se aplica la misma entrega de avisos existente. Una nota histórica se

@@ -9,6 +9,8 @@ import html
 import json
 import logging
 import re
+import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -20,16 +22,45 @@ from .db import connect
 from .domain import Invalid
 
 TTL = 12 * 3600
+RETRY_DELAY = 60
 BASE = 'https://cima.aemps.es/cima/rest/'
 MAX_RESPONSE = 4 * 1024 * 1024
 WAKE = threading.Event()
 FETCH_LOCK = threading.RLock()
 log = logging.getLogger(__name__)
-ERROR = 'No se pudo consultar CIMA/AEMPS. Se conserva la información anterior; vuelve a comprobarse cuando transcurran 12 horas desde el intento.'
+ERROR = 'No se pudo consultar CIMA/AEMPS. Se conserva la última información disponible.'
 
 
 class SourceUnavailable(Exception):
     pass
+
+
+def connection_error(error):
+    """Describe el fallo sin incluir consultas, URLs privadas ni credenciales."""
+    if isinstance(error, urllib.error.HTTPError):
+        if error.code == 429:
+            detail = 'CIMA/AEMPS ha limitado las consultas (HTTP 429).'
+        elif error.code >= 500:
+            detail = f'CIMA/AEMPS no está disponible (HTTP {error.code}).'
+        elif 300 <= error.code < 400:
+            detail = f'CIMA/AEMPS redirigió la consulta de forma inesperada (HTTP {error.code}).'
+        else:
+            detail = f'CIMA/AEMPS rechazó la consulta (HTTP {error.code}).'
+    else:
+        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            detail = 'No se pudo verificar el certificado HTTPS de CIMA/AEMPS.'
+        elif isinstance(reason, ssl.SSLError):
+            detail = 'No se pudo establecer la conexión segura con CIMA/AEMPS.'
+        elif isinstance(reason, (TimeoutError, socket.timeout)):
+            detail = 'CIMA/AEMPS no respondió dentro del tiempo de espera.'
+        elif isinstance(reason, socket.gaierror):
+            detail = 'No se pudo resolver el servidor cima.aemps.es.'
+        elif isinstance(reason, ValueError):
+            detail = 'CIMA/AEMPS devolvió una respuesta con un formato inesperado.'
+        else:
+            detail = 'No se pudo conectar con el servidor de CIMA/AEMPS.'
+    return detail + ' Se conserva la última información disponible.'
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -42,7 +73,7 @@ def fetch_json(endpoint):
     if endpoint.startswith(('/', 'http')) or '..' in endpoint:
         raise ValueError('Ruta de fuente no válida')
     request = urllib.request.Request(BASE + endpoint, headers={
-        'Accept': 'application/json', 'User-Agent': 'Pastillas/0.2 (+https://github.com/kadyto/pastillas)'})
+        'Accept': 'application/json', 'User-Agent': 'Pastillas (+https://github.com/kadyto/pastillas)'})
     try:
         with urllib.request.build_opener(NoRedirect()).open(request, timeout=8) as response:
             if response.status == 204:
@@ -52,7 +83,7 @@ def fetch_json(endpoint):
                 raise SourceUnavailable(ERROR)
             return json.loads(raw)
     except (OSError, ValueError) as error:
-        raise SourceUnavailable(ERROR) from error
+        raise SourceUnavailable(connection_error(error)) from error
 
 
 def registry(value):
@@ -225,9 +256,14 @@ def cached(key, loader, path=None, now=None):
             db.execute('INSERT OR IGNORE INTO medicine_cache(cache_key) VALUES(?)', (key,))
             entry = db.execute('SELECT * FROM medicine_cache WHERE cache_key=?', (key,)).fetchone()
             if entry['expires_at'] > now:
-                if entry['error'] or not entry['checked_at']:
+                # Las lecturas explícitas pueden recuperarse de un fallo sin esperar
+                # las 12 horas reservadas a los resultados válidos y al proceso automático.
+                if entry['error'] and now >= entry['attempted_at'] + RETRY_DELAY:
+                    pass
+                elif entry['error'] or not entry['checked_at']:
                     raise SourceUnavailable(entry['error'] or 'La consulta sigue en curso. Vuelve a abrir la ficha en unos segundos.')
-                return json.loads(entry['data'])
+                else:
+                    return json.loads(entry['data'])
             db.execute('UPDATE medicine_cache SET attempted_at=?,expires_at=?,pending=2,error=? WHERE cache_key=?',
                        (now, now + TTL, 'La comprobación anterior no llegó a completarse.', key))
         try:
@@ -235,7 +271,7 @@ def cached(key, loader, path=None, now=None):
         except Exception as error:
             message = str(error) if isinstance(error, SourceUnavailable) else ERROR
             with connect(path) as db:
-                db.execute('UPDATE medicine_cache SET pending=0,error=? WHERE cache_key=?', (message, key))
+                db.execute('UPDATE medicine_cache SET pending=0,error=?,expires_at=? WHERE cache_key=?', (message, now + RETRY_DELAY, key))
             raise SourceUnavailable(message) from None
         with connect(path) as db:
             db.execute('UPDATE medicine_cache SET data=?,checked_at=?,pending=0,error=? WHERE cache_key=?',
@@ -342,6 +378,25 @@ def information(db, medication_id, now=None):
                 equivalents_url=equivalents_url(item['vademecum_url']))
 
 
+def retry_information(db, user_id, medication_id, now=None):
+    from .service import owned
+    now = int(time.time()) if now is None else now
+    db.execute('BEGIN IMMEDIATE')
+    owned(db, 'medications', medication_id, user_id)
+    item = db.execute('SELECT * FROM medicine_links WHERE medication_id=?', (medication_id,)).fetchone()
+    if not item:
+        raise Invalid('Vincula el medicamento a CIMA/AEMPS antes de comprobarlo.')
+    key = info_key(item)
+    db.execute('INSERT OR IGNORE INTO medicine_cache(cache_key) VALUES(?)', (key,))
+    entry = db.execute('SELECT * FROM medicine_cache WHERE cache_key=?', (key,)).fetchone()
+    if entry['pending'] == 1 or (entry['pending'] == 2 and now - entry['attempted_at'] < 120):
+        return information(db, medication_id, now)
+    if entry['attempted_at'] and now < entry['attempted_at'] + RETRY_DELAY:
+        raise Invalid('Espera un minuto desde el último intento antes de volver a consultar AEMPS.')
+    db.execute('UPDATE medicine_cache SET expires_at=0,pending=1 WHERE cache_key=?', (key,))
+    return information(db, medication_id, now)
+
+
 def load_information(item):
     # Una comprobación por medicamento/envase: no se reutiliza una ficha caducada.
     medicine = fetch_json('medicamento?' + urlencode(dict(nregistro=item['nregistro'])))
@@ -418,7 +473,7 @@ def process_one(path=None, now=None):
             message = str(error) if isinstance(error, SourceUnavailable) else ERROR
             with connect(path) as db:
                 db.execute('UPDATE medicine_cache SET pending=0,error=? WHERE cache_key=?', (message, entry['cache_key']))
-            log.warning('CIMA/AEMPS no disponible; el siguiente intento respetará la caché de 12 horas.')
+            log.warning('CIMA/AEMPS: %s El siguiente intento automático respetará la caché de 12 horas.', message)
             return True
         with connect(path) as db:
             db.execute('BEGIN IMMEDIATE')

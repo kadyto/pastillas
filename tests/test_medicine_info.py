@@ -1,8 +1,11 @@
 import json
 import os
+import socket
 import sqlite3
+import ssl
 import tempfile
 import unittest
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +20,25 @@ URL = 'https://www.vademecum.es/espana/medicamento/27631/omacor-1000-mg-capsulas
 
 
 class InputTests(unittest.TestCase):
+    def test_connection_errors_identify_the_cause_without_exposing_queries(self):
+        cases = [
+            (urllib.error.HTTPError('https://private.example/secret',503,'private',{},None),'HTTP 503'),
+            (urllib.error.HTTPError('https://private.example/secret',429,'private',{},None),'HTTP 429'),
+            (urllib.error.URLError(TimeoutError('private')),'tiempo de espera'),
+            (urllib.error.URLError(socket.gaierror(-2,'private')),'resolver'),
+            (urllib.error.URLError(ssl.SSLCertVerificationError('private')),'certificado HTTPS'),
+            (ValueError('private response content'),'formato inesperado'),
+        ]
+        for error, expected in cases:
+            with self.subTest(expected=expected):
+                message=info.connection_error(error)
+                self.assertIn(expected,message)
+                self.assertNotIn('private',message)
+        with patch('app.medicine_info.urllib.request.build_opener') as opener:
+            opener.return_value.open.side_effect=cases[0][0]
+            with self.assertRaisesRegex(info.SourceUnavailable,'HTTP 503'):
+                info.fetch_json('medicamentos?nombre=prueba')
+
     def test_url_is_only_a_reference_never_a_fetch_target(self):
         self.assertEqual(info.vademecum_url(URL), URL)
         self.assertIn('/espana/equivalencias/27631/', info.equivalents_url(URL))
@@ -50,6 +72,50 @@ class InformationTests(DatabaseTests):
     def queue(self, now=NOW):
         info.enqueue_user(self.db,self.user_id,now)
         self.db.commit()
+
+    def test_manual_retry_recovers_failed_check_without_waiting_twelve_hours(self):
+        self.queue()
+        with patch.object(info,'fetch_json',side_effect=fetch):
+            info.process_one(self.path,NOW)
+        self.queue(NOW+info.TTL)
+        with patch.object(info,'fetch_json',side_effect=info.SourceUnavailable('Fallo sintético de conexión')):
+            info.process_one(self.path,NOW+info.TTL)
+        previous=info.information(self.db,self.medication['id'],NOW+info.TTL)
+        with self.assertRaises(Invalid):
+            info.retry_information(self.db,self.user_id,self.medication['id'],NOW+info.TTL+1)
+        self.db.rollback()
+        result=info.retry_information(self.db,self.user_id,self.medication['id'],NOW+info.TTL+info.RETRY_DELAY)
+        self.db.commit()
+        self.assertEqual(result['status'],'pending')
+        self.assertEqual(result['data'],previous['data'])
+        self.assertEqual(result['checked_at'],previous['checked_at'])
+        info.retry_information(self.db,self.user_id,self.medication['id'],NOW+info.TTL+info.RETRY_DELAY)
+        self.db.commit()
+        with patch.object(info,'fetch_json',side_effect=fetch) as source:
+            self.assertTrue(info.process_one(self.path,NOW+info.TTL+info.RETRY_DELAY))
+            self.assertFalse(info.process_one(self.path,NOW+info.TTL+info.RETRY_DELAY+1))
+            self.assertEqual(source.call_count,3)
+        current=info.information(self.db,self.medication['id'],NOW+info.TTL+info.RETRY_DELAY+1)
+        self.assertEqual(current['status'],'fresh')
+        self.assertEqual(current['error'],'')
+        self.assertEqual(self.db.execute('SELECT count(*) FROM alerts').fetchone()[0],2)
+        self.assertEqual(service.owned(self.db,'medications',self.medication['id'],self.user_id)['stock'],self.medication['stock'])
+
+    def test_failed_explicit_lookup_can_retry_after_one_minute_including_old_cache(self):
+        key='search:retry'
+        with self.assertRaises(info.SourceUnavailable):
+            info.cached(key,lambda: (_ for _ in ()).throw(info.SourceUnavailable('Fallo sintético')),self.path,NOW)
+        # Simula una caché fallida creada por una versión anterior.
+        self.db.execute('UPDATE medicine_cache SET expires_at=? WHERE cache_key=?',(NOW+info.TTL,key));self.db.commit()
+        with patch.object(info,'fetch_json',return_value={'resultados':[]}) as source:
+            with self.assertRaises(info.SourceUnavailable):
+                info.cached(key,lambda:info.fetch_json('medicamentos?nombre=prueba'),self.path,NOW+59)
+            source.assert_not_called()
+            result=info.cached(key,lambda:info.fetch_json('medicamentos?nombre=prueba'),self.path,NOW+60)
+            self.assertEqual(result,{'resultados':[]})
+            self.assertEqual(source.call_count,1)
+            info.cached(key,lambda:info.fetch_json('medicamentos?nombre=prueba'),self.path,NOW+61)
+            self.assertEqual(source.call_count,1)
 
     def test_login_checks_at_most_once_per_twelve_hours_across_connections(self):
         self.queue()

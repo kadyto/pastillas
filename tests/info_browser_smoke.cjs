@@ -44,6 +44,27 @@ let browser,page;
   await page.getByText('MEDICAMENTO EQUIVALENTE FRANCÉS DE PRUEBA',{exact:true}).waitFor();
   assert.ok((await page.getByRole('link',{name:'Consultar equivalencias en Vademécum'}).getAttribute('href')).endsWith('?code=fr'));
   await page.getByRole('button',{name:'Avisos',exact:true}).click();
+  // Un fallo posterior conserva los avisos; el reintento manual recupera la ficha.
+  const beforeRetry=await page.evaluate(()=>fetch('/api/dashboard').then(r=>r.json()));
+  const retryMed=beforeRetry.medications[0];
+  await page.getByRole('button',{name:'Cerrar',exact:true}).click();
+  const failed=await page.evaluate(async id=>{
+    const response=await fetch('/api/test-medicine-failure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({medication_id:id})});
+    if(!response.ok)throw new Error('No se pudo simular el fallo del proveedor');return response.json();
+  },retryMed.id);
+  assert.equal(failed.status,'unavailable');
+  assert.deepEqual(failed.data,retryMed.information.data);
+  await page.getByRole('button',{name:'Información',exact:true}).click();
+  await page.locator('dialog').getByText('La información no está actualizada').waitFor();
+  await page.getByText('CIMA/AEMPS no respondió dentro del tiempo de espera. Se conserva la última información disponible.',{exact:true}).waitFor();
+  await page.getByRole('heading',{name:'AVISO SINTÉTICO: comprobar la presentación'}).waitFor();
+  await page.getByRole('button',{name:'Reintentar comprobación',exact:true}).click();
+  await page.locator('dialog').getByText('Información comprobada').waitFor();
+  const recovered=await waitForDashboard(page,d=>d.medications[0]?.information?.status==='fresh');
+  assert.equal(recovered.medications[0].stock,retryMed.stock);
+  assert.equal(recovered.medications[0].dose,retryMed.dose);
+  assert.equal(recovered.medications[0].information.error,'');
+  assert.ok(recovered.medications[0].information.attempted_at>failed.attempted_at);
   fs.mkdirSync('test-results',{recursive:true});
   await page.screenshot({path:'test-results/medicine-information-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
@@ -73,9 +94,9 @@ let browser,page;
   await page.evaluate(()=>fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
   await page.evaluate(()=>fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
   await page.evaluate(()=>fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'otro-usuario',password:'contrasena-otro-prueba-123'})}));
-  for(const [path,method] of [[`information`,'GET'],[`document?type=2`,'GET'],['equivalents?country=fr','GET'],['information','POST'],['information','DELETE']]){
+  for(const [path,method] of [[`information`,'GET'],[`document?type=2`,'GET'],['equivalents?country=fr','GET'],['information','POST'],['information-check','POST'],['information','DELETE']]){
     const code=await page.evaluate(async({url,method})=>{const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:method==='GET'?undefined:'{}'});return r.status;},{url:`/api/medications/${med.id}/${path}`,method});
     assert.equal(code,404);
   }
-  assert.deepEqual(errors,[]);await browser.close();console.log('Información: búsqueda URL, envase, documentos, avisos, caché, exportación y aislamiento correctos.');
+  assert.deepEqual(errors,[]);await browser.close();console.log('Información: búsqueda URL, envase, documentos, avisos, reintento, caché, exportación y aislamiento correctos.');
 })().catch(async error=>{console.error(error);if(page){fs.mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/medicine-information-failure.png',fullPage:true}).catch(()=>{});}if(browser)await browser.close();process.exit(1);});

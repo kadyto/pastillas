@@ -9,6 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import updates
 from app import server
 
+# Versiones sintéticas estables, independientes del lanzamiento probado.
+updates.__version__ = server.__version__ = '0.4.0'
+
 os.environ['DOCKHAND_WEBHOOK_URL'] = 'https://dockhand.example/api/git/stacks/42/webhook'
 os.environ['DOCKHAND_WEBHOOK_SECRET'] = 'secreto-sintetico-del-navegador'
 fixture = {'latest': '0.4.1', 'fail': False, 'github_requests': 0, 'deploy_requests': 0}

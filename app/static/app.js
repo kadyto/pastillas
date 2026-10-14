@@ -437,7 +437,12 @@ async function showMedicineInfo(med) {
   function draw(item) {
     const notes=item.data.notices||[], docs=item.data.documents||[], link=item.link;
     const status=item.status==='pending'?'Comprobando CIMA/AEMPS…':item.status==='fresh'?'Información comprobada':'La información no está actualizada';
-    panel.innerHTML=`<p><strong>${esc(link.cima_name)}</strong><br>${esc(link.presentation_name||'Sin envase seleccionado')}${link.cn?` · CN ${esc(link.cn)}`:''}</p><p class="inline-note">${esc(status)}${item.checked_at?`<br>Última comprobación correcta: ${fullDate(item.checked_at)}`:''}${item.attempted_at?`<br>Último intento: ${fullDate(item.attempted_at)}`:''}${item.next_check_at?`<br>Próxima comprobación posible al entrar: ${fullDate(item.next_check_at)}`:''}</p>${item.error?`<p class="error-box" role="alert">${esc(item.error)}</p>`:''}<div class="info-tabs" aria-label="Información del medicamento"><button class="button small-button" type="button" data-info-tab="notices">Avisos</button><button class="button small-button" type="button" data-info-tab="2">Prospecto</button><button class="button small-button" type="button" data-info-tab="1">Ficha técnica</button><button class="button small-button" type="button" data-info-tab="equivalents">Equivalencias</button></div><div id="medicine-content"></div><div class="form-actions">${button('med-edit','Editar vinculación','edit',`data-id="${med.id}"`,'small-button')}${button('close','Cerrar')}</div>`;
+    panel.innerHTML=`<p><strong>${esc(link.cima_name)}</strong><br>${esc(link.presentation_name||'Sin envase seleccionado')}${link.cn?` · CN ${esc(link.cn)}`:''}</p><p class="inline-note">${esc(status)}${item.checked_at?`<br>Última comprobación correcta: ${fullDate(item.checked_at)}`:''}${item.attempted_at?`<br>Último intento: ${fullDate(item.attempted_at)}`:''}${item.next_check_at?`<br>Próxima comprobación posible al entrar: ${fullDate(item.next_check_at)}`:''}</p>${item.error?`<p class="error-box" role="alert">${esc(item.error)}</p>`:''}<div class="info-tabs" aria-label="Información del medicamento"><button class="button small-button" type="button" data-info-tab="notices">Avisos</button><button class="button small-button" type="button" data-info-tab="2">Prospecto</button><button class="button small-button" type="button" data-info-tab="1">Ficha técnica</button><button class="button small-button" type="button" data-info-tab="equivalents">Equivalencias</button></div><div id="medicine-content"></div>${item.status!=='fresh'?`<div class="picker-actions"><button type="button" class="button small-button" id="medicine-retry" ${item.status==='pending'?'disabled':''}>${item.status==='pending'?'Comprobando AEMPS…':'Reintentar comprobación'}</button></div>`:''}<div class="form-actions">${button('med-edit','Editar vinculación','edit',`data-id="${med.id}"`,'small-button')}${button('close','Cerrar')}</div>`;
+    $('#medicine-retry',panel)?.addEventListener('click',async event=>{
+      const retry=event.currentTarget;retry.disabled=true;
+      try{const next=await api(`/medications/${med.id}/information-check`,'POST');await display(next);}
+      catch(error){if(panel.isConnected){$('#form-error').textContent=error.message;retry.disabled=false;}}
+    });
     const content=$('#medicine-content',panel);
     async function tab(name) {
       for(const b of panel.querySelectorAll('[data-info-tab]'))b.setAttribute('aria-pressed',String(b.dataset.infoTab===name));
@@ -472,14 +477,18 @@ async function showMedicineInfo(med) {
     for(const b of panel.querySelectorAll('[data-info-tab]'))b.addEventListener('click',()=>tab(b.dataset.infoTab));
     tab('notices');
   }
-  draw(info);
-  if(info.status==='pending'){
-    for(let attempt=0;attempt<15;attempt++){
-      await new Promise(resolve=>setTimeout(resolve,2000));
-      if(!dialog.open||!panel.isConnected)return;
-      const current=await api(`/medications/${med.id}/information`);
-      if(current&&current.status!=='pending'){draw(current);return;}
+  async function display(item){
+    if(!dialog.open||!panel.isConnected)return;
+    $('#form-error').textContent='';draw(item);
+    if(item.status==='pending'){
+      for(let attempt=0;attempt<15;attempt++){
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        if(!dialog.open||!panel.isConnected)return;
+        const current=await api(`/medications/${med.id}/information`);
+        if(current&&current.status!=='pending'){draw(current);return;}
+      }
     }
   }
+  await display(info);
 }
 boot();

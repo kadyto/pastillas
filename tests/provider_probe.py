@@ -2,6 +2,7 @@
 import json
 import sys
 import urllib.request
+from urllib.parse import quote
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app import medicine_info as info
@@ -33,6 +34,10 @@ except Exception as error:
     cause=error.__cause__
     result['cima_failure_type']=type(cause).__name__ if cause else None
     result['cima_http_status']=getattr(cause,'code',None)
+    reason=getattr(cause,'reason',None)
+    result['cima_reason_type']=type(reason).__name__ if reason is not None else None
+    result['cima_ssl_verify_message']=getattr(reason,'verify_message',None)
+    result['cima_reason_errno']=getattr(reason,'errno',None)
 
 # Comprueba registros de autorización nacional y centralizada por separado.
 for query in ('pravafenix',):
@@ -42,7 +47,7 @@ for query in ('pravafenix',):
         diagnostic['matches']=len(matches)
         for match in matches[:1]:
             number=str(match['nregistro'])
-            medicine=info.fetch_json('medicamento?nregistro='+__import__('urllib.parse',fromlist=['quote']).quote(number,safe=''))
+            medicine=info.fetch_json('medicamento?nregistro='+quote(number,safe=''))
             diagnostic['registry_format']='centralised' if '/' in number else 'national'
             diagnostic['notes_flag']=medicine.get('notas')
             for presentation in medicine.get('presentaciones',[])[:1]:
@@ -57,6 +62,10 @@ for query in ('pravafenix',):
         cause=error.__cause__
         diagnostic['failure_type']=type(cause).__name__ if cause else None
         diagnostic['http_status']=getattr(cause,'code',None)
+        reason=getattr(cause,'reason',None)
+        diagnostic['reason_type']=type(reason).__name__ if reason is not None else None
+        diagnostic['ssl_verify_message']=getattr(reason,'verify_message',None)
+        diagnostic['reason_errno']=getattr(reason,'errno',None)
     result['centralised_registration']=diagnostic
 for label,url in [('equivalents_de','https://www.vademecum.es/espana/equivalencias/27631/omacor-1000-mg-capsulas-blandas'),
                   ('equivalents_fr','https://www.vademecum.es/espana/equivalencias/27631/omacor-1000-mg-capsulas-blandas?code=fr')]:
