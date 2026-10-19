@@ -138,12 +138,12 @@ jobs:
         run: |
           adb install /tmp/pastillas-apks/debug/app-debug.apk
           adb install /tmp/pastillas-apks/androidTest/debug/app-debug-androidTest.apk
-          adb shell am instrument -w io.github.kadyto.pastillas.debug.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/pastillas-instrumentation.log
+          adb shell am instrument -w -e class io.github.kadyto.pastillas.OfflineAndroidTest io.github.kadyto.pastillas.debug.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/pastillas-instrumentation.log
           test "$(grep -c 'OK (2 tests)' /tmp/pastillas-instrumentation.log)" = 1
           adb shell am force-stop io.github.kadyto.pastillas.debug
-          adb shell am start -W -n io.github.kadyto.pastillas.debug/io.github.kadyto.pastillas.MainActivity
-          sleep 4
-          adb exec-out screencap -p > /tmp/pastillas-android.png
+          adb shell am instrument -w -e class io.github.kadyto.pastillas.ColdStartAndroidTest io.github.kadyto.pastillas.debug.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/pastillas-cold-start.log
+          test "$(grep -c 'OK (1 test)' /tmp/pastillas-cold-start.log)" = 1
+          adb exec-out run-as io.github.kadyto.pastillas.debug cat cache/pastillas-cold-start.png > /tmp/pastillas-android.png
       - name: Collect device diagnostics
         if: always()
         run: |
@@ -156,6 +156,7 @@ jobs:
           name: pastillas-android-device-tests
           path: |
             /tmp/pastillas-instrumentation.log
+            /tmp/pastillas-cold-start.log
             /tmp/pastillas-android.png
             /tmp/pastillas-android-runtime.log
             /tmp/pastillas-emulator.log

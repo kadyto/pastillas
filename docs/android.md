@@ -159,7 +159,8 @@ la declaración de seguridad de los datos.
 El workflow compila APK y AAB, ejecuta Android Lint, comprueba las bibliotecas
 de 16 KB y la firma de la APK de pruebas. Después instala la APK en un emulador
 Android con la red desactivada y prueba altas desde la interfaz, persistencia,
-descuento de tomas y una notificación con la actividad cerrada.
+descuento de tomas, una notificación con la actividad cerrada y el arranque normal
+después de cerrar completamente el proceso.
 
 Las pruebas Python de operaciones locales bloquean la creación de sockets. La
 versión web conserva su workflow de Docker, navegador y proxy HTTP/HTTPS.
