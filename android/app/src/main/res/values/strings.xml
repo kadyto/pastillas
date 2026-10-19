@@ -1,0 +1,4 @@
+<resources>
+    <string name="loading">Preparando tu botiquín…</string>
+    <string name="storage_error">No se pudo abrir el botiquín local. Cierra y vuelve a abrir la app. No borres sus datos si necesitas conservarlos.</string>
+</resources>

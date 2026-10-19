@@ -1,8 +1,17 @@
 # Pastillas
 
-Pastillas es una aplicación web autohospedada para organizar medicamentos, recetas, horarios de toma y existencias. Permite registrar un tratamiento, calcular el consumo previsto y anticipar la reposición de medicamentos.
+Pastillas permite organizar medicamentos, recetas, horarios de toma y existencias, calcular el consumo previsto y anticipar la reposición de medicamentos.
 
-Se instala con Docker y guarda los datos en el servidor. La interfaz está en español, se adapta a móviles y ordenadores y ofrece tema claro y oscuro. Cada cuenta dispone de su propio botiquín.
+Está disponible como **aplicación web autohospedada con Docker** y como **aplicación Android autónoma**. Ambas comparten la lógica de pautas y stock y la interfaz en español, con tema claro y oscuro.
+
+| Versión | Dónde guarda los datos | Qué necesita |
+| --- | --- | --- |
+| Web | SQLite en el servidor; botiquín independiente por cuenta | Docker y un navegador |
+| Android | SQLite privada en el teléfono; sin cuenta remota | Android 8 o posterior, ARM64 o x86-64 |
+
+En Android, medicamentos, pautas, stock, recetas y recordatorios funcionan sin internet y sin servidor. AEMPS y Vademécum son consultas opcionales, desactivadas al instalar. Las copias JSON de la web se pueden importar en Android.
+
+Consulta la [guía Android y distribución de APK/AAB](docs/android.md). La instalación web se describe más abajo.
 
 ## Funcionalidades
 
@@ -11,9 +20,9 @@ Se instala con Docker y guarda los datos en el servidor. La interfaz está en es
 - **Control de existencias:** descuento automático de las tomas programadas, registro de compras, recuentos manuales e historial de movimientos. La previsión de consumo permite estimar cuándo será necesaria una reposición.
 - **Recetas:** referencia, profesional, indicaciones, medicamentos vinculados y recordatorio de renovación.
 - **Información de medicamentos:** búsqueda por nombre o URL de Vademécum, prospectos y fichas técnicas de CIMA/AEMPS, avisos de seguridad y problemas de suministro. Las equivalencias internacionales de Vademécum se consultan por país.
-- **Notificaciones:** avisos dentro de la aplicación, notificaciones del navegador y envío opcional a ntfy para recibir recordatorios con la web cerrada.
-- **Cuentas independientes:** la cuenta administradora crea usuarios; cada usuario accede a sus medicamentos, recetas y avisos.
-- **Versiones:** comprobación diaria de GitHub, consulta manual y actualización mediante un webhook de Dockhand.
+- **Notificaciones:** recordatorios locales en Android; en la web, avisos dentro de la aplicación, notificaciones del navegador y envío opcional a ntfy.
+- **Cuentas web independientes:** la cuenta administradora crea usuarios; cada usuario accede a sus medicamentos, recetas y avisos. Android utiliza el botiquín privado del dispositivo.
+- **Versiones:** APK y AAB para Android. En la web, comprobación diaria de GitHub, consulta manual y actualización mediante un webhook de Dockhand.
 
 ## Instalación con Docker
 

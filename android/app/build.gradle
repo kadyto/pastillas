@@ -1,0 +1,79 @@
+plugins { id 'com.android.application'; id 'com.chaquo.python' }
+
+def signingFile = rootProject.file('key.properties')
+def signing = new Properties()
+if (signingFile.exists()) signingFile.withReader('UTF-8') { signing.load(it) }
+
+android {
+    namespace 'io.github.kadyto.pastillas'
+    compileSdk 36
+    buildToolsVersion '36.0.0'
+    defaultConfig {
+        applicationId 'io.github.kadyto.pastillas'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    signingConfigs {
+        if (signingFile.exists()) {
+            release {
+                storeFile rootProject.file(signing['storeFile'])
+                storePassword signing['storePassword']
+                keyAlias signing['keyAlias']
+                keyPassword signing['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.debug'; versionNameSuffix '-pruebas'; resValue 'string', 'app_name', 'Pastillas (pruebas)' }
+        release {
+            resValue 'string', 'app_name', 'Pastillas'
+            minifyEnabled false
+            if (signingFile.exists()) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildFeatures { buildConfig true }
+    sourceSets { main.assets.srcDirs = [layout.buildDirectory.dir('generated/pastillasAssets')] }
+    packaging { jniLibs { useLegacyPackaging = false } }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.12'
+        pip { install 'tzdata==2026.5' }
+    }
+    sourceSets { main { srcDir layout.buildDirectory.dir('generated/pastillasPython') } }
+}
+
+tasks.register('preparePastillasAssets', Sync) {
+    from('../../app/static') { exclude 'sw.js', 'manifest.webmanifest' }
+    from('src/main/assets')
+    into layout.buildDirectory.dir('generated/pastillasAssets')
+    filesMatching('index.html') {
+        filter { line -> line.replace('<script src="/app.js"', '<script src="/android.js"></script><script src="/app.js"') }
+    }
+}
+tasks.register('preparePastillasPython', Sync) {
+    from('../../app') { into 'app'; exclude 'static/**', '__pycache__/**' }
+    into layout.buildDirectory.dir('generated/pastillasPython')
+}
+tasks.configureEach {
+    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn 'preparePastillasAssets'
+    if (name.toLowerCase().contains('lint')) dependsOn 'preparePastillasAssets'
+    if (name != 'preparePastillasPython' && name.toLowerCase().contains('python')) dependsOn 'preparePastillasPython'
+}
+
+dependencies {
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.work:work-runtime:2.10.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+}

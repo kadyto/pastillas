@@ -1,0 +1,6 @@
+# Copia este archivo como key.properties y guarda tu firma fuera del repositorio.
+# Usa rutas absolutas o relativas a la carpeta android/.
+storeFile=/ruta/privada/pastillas-upload.jks
+storePassword=TU_CONTRASENA_DEL_ALMACEN
+keyAlias=pastillas
+keyPassword=TU_CONTRASENA_DE_LA_CLAVE

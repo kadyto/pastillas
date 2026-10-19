@@ -6,3 +6,13 @@ backups/
 *.sqlite*
 test-results/
 node_modules/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/key.properties
+android/dist/
+*.jks
+*.keystore
+*.apk
+*.aab
+*.apks

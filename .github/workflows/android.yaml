@@ -1,0 +1,142 @@
+name: Android
+on:
+  push:
+    paths: ['android/**', 'app/**', 'tests/test_android_runtime.py', 'scripts/verify_android_artifact.py', '.github/workflows/android.yaml']
+  pull_request:
+    paths: ['android/**', 'app/**', 'tests/test_android_runtime.py', 'scripts/verify_android_artifact.py', '.github/workflows/android.yaml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Verify local operations without network
+        run: python -m unittest discover -s tests -p 'test_android_runtime.py' -v
+      - name: Configure optional release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os,base64,pathlib
+          if os.environ.get('KEYSTORE_BASE64'):
+              values={name:os.environ[name] for name in ('STORE_PASSWORD','KEY_ALIAS','KEY_PASSWORD')}
+              if not all(values.values()):
+                  raise SystemExit('Faltan variables de firma Android')
+              key=pathlib.Path(os.environ['RUNNER_TEMP'])/'pastillas-upload.jks'
+              key.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'],validate=True))
+              key.chmod(0o600)
+              def escape(value):
+                  return value.replace('\\','\\\\').replace('\n','\\n').replace('\r','\\r')
+              props={'storeFile':str(key),'storePassword':values['STORE_PASSWORD'],'keyAlias':values['KEY_ALIAS'],'keyPassword':values['KEY_PASSWORD']}
+              pathlib.Path('android/key.properties').write_text('\n'.join(k+'='+escape(v) for k,v in props.items())+'\n')
+          PY
+      - name: Install Android build packages
+        run: |
+          python - <<'PY'
+          import subprocess,os
+          subprocess.run([os.environ['ANDROID_HOME']+'/cmdline-tools/latest/bin/sdkmanager','platforms;android-36','build-tools;36.0.0'],input='y\n'*100,text=True,check=True)
+          PY
+      - name: Build APK and Android App Bundle
+        working-directory: android
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleRelease :app:bundleRelease :app:assembleDebugAndroidTest :app:lintDebug
+      - name: Verify 16 KB native libraries and APK signature
+        run: |
+          python scripts/verify_android_artifact.py android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/bundle/release/app-release.aab
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Prepare downloadable packages
+        run: |
+          mkdir -p android/dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/dist/pastillas-android-pruebas.apk
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk android/dist/pastillas-android.apk
+            cp android/app/build/outputs/bundle/release/app-release.aab android/dist/pastillas-google-play.aab
+          else
+            cp android/app/build/outputs/bundle/release/app-release.aab android/dist/pastillas-google-play-sin-firmar.aab
+          fi
+          cd android/dist
+          sha256sum *.apk *.aab > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pastillas-android
+          path: android/dist/*
+          retention-days: 30
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pastillas-android-instrumentation
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 7
+      - name: Clean signing material
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/pastillas-upload.jks"
+  offline-device:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: pastillas-android-instrumentation
+          path: /tmp/pastillas-apks
+      - name: Boot Android emulator
+        run: |
+          sudo chmod 666 /dev/kvm
+          python - <<'PY'
+          import subprocess,os
+          subprocess.run([os.environ['ANDROID_HOME']+'/cmdline-tools/latest/bin/sdkmanager','system-images;android-35;google_apis;x86_64'],input='y\n'*100,text=True,check=True)
+          PY
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n pastillas-test -k 'system-images;android-35;google_apis;x86_64' --force
+          "$ANDROID_HOME/emulator/emulator" -avd pastillas-test -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 2048 > /tmp/pastillas-emulator.log 2>&1 &
+          timeout 180 adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb shell input keyevent 82
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+      - name: Verify offline interface, persistence and background reminder
+        run: |
+          adb install /tmp/pastillas-apks/debug/app-debug.apk
+          adb install /tmp/pastillas-apks/androidTest/debug/app-debug-androidTest.apk
+          adb shell am instrument -w io.github.kadyto.pastillas.debug.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/pastillas-instrumentation.log
+          test "$(grep -c 'OK (2 tests)' /tmp/pastillas-instrumentation.log)" = 1
+          adb shell am force-stop io.github.kadyto.pastillas.debug
+          adb shell am start -W -n io.github.kadyto.pastillas.debug/io.github.kadyto.pastillas.MainActivity
+          sleep 4
+          adb exec-out screencap -p > /tmp/pastillas-android.png
+      - name: Collect device diagnostics
+        if: always()
+        run: |
+          adb logcat -d -s AndroidRuntime python.stderr > /tmp/pastillas-android-runtime.log || true
+          adb shell uiautomator dump /sdcard/pastillas-ui.xml || true
+          adb pull /sdcard/pastillas-ui.xml /tmp/pastillas-ui.xml || true
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: pastillas-android-device-tests
+          path: |
+            /tmp/pastillas-instrumentation.log
+            /tmp/pastillas-android.png
+            /tmp/pastillas-android-runtime.log
+            /tmp/pastillas-emulator.log
+            /tmp/pastillas-ui.xml
+          if-no-files-found: ignore
