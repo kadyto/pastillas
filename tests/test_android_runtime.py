@@ -108,6 +108,26 @@ class AndroidRuntimeTests(unittest.TestCase):
             mobile.import_json(json.dumps(invalid))
         self.assertEqual(len(self.call('GET', '/dashboard')['medications']), 2)
 
+    def test_export_is_a_consistent_snapshot_when_a_dose_is_recorded_during_export(self):
+        ident = self.med(schedule='as_needed')
+        changed = False
+        def connection_with_concurrent_write():
+            db = connect()
+            def before_query(sql):
+                nonlocal changed
+                if not changed and sql.startswith('SELECT * FROM prescriptions'):
+                    changed = True
+                    with connect() as writer:
+                        service.record_dose(writer, mobile.local_user(writer)['id'], ident, dict(status='taken'))
+            db.set_trace_callback(before_query)
+            return db
+        with patch.object(mobile, 'connect', side_effect=connection_with_concurrent_write):
+            exported = json.loads(mobile.export_json())
+        self.assertTrue(changed)
+        self.assertEqual(exported['medications'][0]['stock'], 12500)
+        self.assertEqual(exported['doses'], [])
+        self.assertEqual(self.call('GET', '/dashboard')['medications'][0]['stock'], 12)
+
     def test_import_preserves_expiry_links_and_does_not_query_sources(self):
         ident = self.med(schedule='as_needed')
         with connect() as db:

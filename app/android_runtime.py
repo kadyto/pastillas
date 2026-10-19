@@ -138,6 +138,7 @@ def export_json():
     with connect() as db:
         user = local_user(db)
         inventory.sync_due(db, user_id=user['id'])
+        db.execute('BEGIN')  # Una sola instantánea aunque se entregue una alarma al exportar.
         return json.dumps(service.export_data(db, user), ensure_ascii=False, allow_nan=False)
 
 
