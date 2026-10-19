@@ -25,7 +25,8 @@ final class RuntimeApi {
         return module;
     }
     static String call(Context context, String method, Object... arguments) {
-        return module(context).callAttr(method, arguments).toString();
+        PyObject result = module(context).callAttr(method, arguments);
+        return result == null ? "" : result.toString();
     }
     static void sources(Context context) {
         Context app = context.getApplicationContext();
