@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -88,6 +91,8 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      ANDROID_AVD_HOME: /tmp/pastillas-avd
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8.0.2
@@ -98,19 +103,33 @@ jobs:
         run: |
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          mkdir -p "$ANDROID_AVD_HOME"
           sudo chmod 666 /dev/kvm
           python - <<'PY'
           import subprocess,os
           subprocess.run([os.environ['ANDROID_HOME']+'/cmdline-tools/latest/bin/sdkmanager','platform-tools','system-images;android-35;google_apis;x86_64'],input='y\n'*100,text=True,check=True)
           PY
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n pastillas-test -k 'system-images;android-35;google_apis;x86_64' --force
-          "$ANDROID_HOME/emulator/emulator" -avd pastillas-test -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 2048 > /tmp/pastillas-emulator.log 2>&1 &
-          timeout 180 adb wait-for-device
-          for attempt in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+          python - <<'PY'
+          import pathlib,os,re
+          config=pathlib.Path(os.environ['ANDROID_AVD_HOME'])/'pastillas-test.avd/config.ini'
+          source=config.read_text()
+          source=re.sub(r'^disk.dataPartition.size=.*$', 'disk.dataPartition.size=2048M',source,flags=re.M)
+          if 'disk.dataPartition.size=' not in source: source+='\ndisk.dataPartition.size=2048M\n'
+          config.write_text(source)
+          PY
+          "$ANDROID_HOME/emulator/emulator" -accel-check
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd pastillas-test -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -feature -Vulkan -cores 2 -memory 2048 > /tmp/pastillas-emulator.log 2>&1 &
+          emulator_pid=$!
+          deadline=$((SECONDS + 240))
+          booted=false
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then tail -n 100 /tmp/pastillas-emulator.log; exit 1; fi
+            if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then booted=true; break; fi
             sleep 2
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          if [ "$booted" != true ]; then tail -n 100 /tmp/pastillas-emulator.log; exit 1; fi
           adb shell input keyevent 82
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
@@ -128,9 +147,9 @@ jobs:
       - name: Collect device diagnostics
         if: always()
         run: |
-          adb logcat -d -s AndroidRuntime python.stderr > /tmp/pastillas-android-runtime.log || true
-          adb shell uiautomator dump /sdcard/pastillas-ui.xml || true
-          adb pull /sdcard/pastillas-ui.xml /tmp/pastillas-ui.xml || true
+          timeout 20 adb logcat -d -s AndroidRuntime python.stderr > /tmp/pastillas-android-runtime.log || true
+          timeout 20 adb shell uiautomator dump /sdcard/pastillas-ui.xml || true
+          timeout 10 adb pull /sdcard/pastillas-ui.xml /tmp/pastillas-ui.xml || true
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
