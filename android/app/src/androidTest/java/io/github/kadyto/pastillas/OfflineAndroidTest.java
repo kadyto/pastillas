@@ -31,6 +31,9 @@ public final class OfflineAndroidTest {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         device.executeShellCommand("svc wifi disable");device.executeShellCommand("svc data disable");
+        long offlineDeadline = SystemClock.elapsedRealtime() + 10000;
+        while (BotiquinWorker.online(context) && SystemClock.elapsedRealtime() < offlineDeadline) SystemClock.sleep(100);
+        assertFalse("La prueba debe ejecutarse con la red desconectada", BotiquinWorker.online(context));
         RuntimeApi.module(context);
         JSONObject erased = new JSONObject(RuntimeApi.call(context, "request", "POST", "/api/android/erase", "{\"confirm\":\"BORRAR\"}"));
         assertEquals(200, erased.getInt("status"));

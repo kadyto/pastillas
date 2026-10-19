@@ -2,7 +2,7 @@
 
 Fecha: 19 de octubre de 2026.
 
-Esta política corresponde a la aplicación Android de código abierto Pastillas,
+Esta política corresponde a la aplicación Android Pastillas, con código disponible públicamente,
 cuyo proyecto se encuentra en <https://github.com/kadyto/pastillas>. La versión
 web autohospedada tiene un almacenamiento y una configuración de servicios
 distintos.

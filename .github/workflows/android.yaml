@@ -96,10 +96,12 @@ jobs:
           path: /tmp/pastillas-apks
       - name: Boot Android emulator
         run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
           sudo chmod 666 /dev/kvm
           python - <<'PY'
           import subprocess,os
-          subprocess.run([os.environ['ANDROID_HOME']+'/cmdline-tools/latest/bin/sdkmanager','system-images;android-35;google_apis;x86_64'],input='y\n'*100,text=True,check=True)
+          subprocess.run([os.environ['ANDROID_HOME']+'/cmdline-tools/latest/bin/sdkmanager','platform-tools','system-images;android-35;google_apis;x86_64'],input='y\n'*100,text=True,check=True)
           PY
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n pastillas-test -k 'system-images;android-35;google_apis;x86_64' --force
           "$ANDROID_HOME/emulator/emulator" -avd pastillas-test -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 2048 > /tmp/pastillas-emulator.log 2>&1 &

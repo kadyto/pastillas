@@ -140,7 +140,9 @@ public final class MainActivity extends ComponentActivity {
     public final class Bridge {
         @JavascriptInterface public void request(String identifier, String method, String path, String body) {
             if (identifier == null || !identifier.matches("[0-9]{1,12}") || destroyed) return;
-            boolean network = path != null && (path.startsWith("/api/medicine-") || path.matches("/api/medications/[0-9]+/(document|equivalents).*"));
+            boolean network = path != null && (path.startsWith("/api/medicine-") ||
+                    path.matches("/api/medications/[0-9]+/(document|equivalents).*") ||
+                    ("POST".equals(method) && path.matches("/api/medications/[0-9]+/information")));
             (network ? remote : executor).execute(() -> {
                 String response;
                 try { response = RuntimeApi.call(MainActivity.this, "request", method, path, body); }

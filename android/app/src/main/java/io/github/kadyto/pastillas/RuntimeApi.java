@@ -31,7 +31,7 @@ final class RuntimeApi {
         Context app = context.getApplicationContext();
         if (!BotiquinWorker.online(app) || !sourcesRunning.compareAndSet(false, true)) return;
         SOURCES.execute(() -> {
-            try { call(app, "check_sources"); }
+            try { call(app, "check_sources");ReminderScheduler.tick(app, 0); }
             catch (Exception ignored) { }
             finally { sourcesRunning.set(false); }
         });
