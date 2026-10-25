@@ -1,5 +1,4 @@
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -142,3 +141,27 @@ class DailyUpgradeTests(DatabaseTests):
         self.assertEqual([r[0] for r in rows], list(map(at, ['2026-10-24T21:30:00Z', '2026-10-25T22:30:00Z', '2026-10-26T22:30:00Z'])))
         self.assertEqual(service.owned(self.db, 'medications', ident, self.user_id)['stock'], 7000)
         self.assertEqual(self.db.execute('SELECT sum(amount) FROM stock_movements WHERE medication_id=?', (ident,)).fetchone()[0], 7000)
+
+    def test_midnight_dose_does_not_repeat_its_shifted_occurrence_before_cutover(self):
+        ident = self.med(interval_hours=24, start_at='2026-10-23T22:30:00Z', dose=1, stock=10)['id']
+        self.db.execute('UPDATE medications SET daily_from=? WHERE id=?', (at('2100-01-01T00:00:00Z'), ident))
+        self.db.commit()
+        inventory.sync_due(self.db, at('2026-10-25T20:00:00Z'))
+        self.migrate(at('2026-10-25T20:00:00Z'))
+        inventory.sync_due(self.db, at('2026-10-25T22:30:00Z')) # antigua toma de mañana a las 23:30 de hoy
+        self.assertEqual(service.owned(self.db, 'medications', ident, self.user_id)['stock'], 8000)
+        inventory.sync_due(self.db, at('2026-10-25T23:30:00Z')) # nueva toma, a las 00:30 de mañana
+        self.assertEqual(service.owned(self.db, 'medications', ident, self.user_id)['stock'], 7000)
+        rows = self.db.execute('SELECT scheduled_at FROM doses WHERE medication_id=? ORDER BY scheduled_at', (ident,)).fetchall()
+        self.assertEqual([r[0] for r in rows], list(map(at, ['2026-10-23T22:30:00Z', '2026-10-24T22:30:00Z', '2026-10-25T23:30:00Z'])))
+
+    def test_already_shifted_tomorrow_dose_is_not_charged_again_after_midnight(self):
+        ident = self.med(interval_hours=24, start_at='2026-10-23T22:30:00Z', dose=1, stock=10)['id']
+        self.db.execute('UPDATE medications SET daily_from=? WHERE id=?', (at('2100-01-01T00:00:00Z'), ident))
+        self.db.commit()
+        inventory.sync_due(self.db, at('2026-10-25T22:40:00Z'))
+        self.migrate(at('2026-10-25T22:40:00Z'))
+        med = service.owned(self.db, 'medications', ident, self.user_id)
+        self.assertEqual(domain.nth_occurrence(med, at('2026-10-25T22:40:00Z'), 0), at('2026-10-26T23:30:00Z'))
+        inventory.sync_due(self.db, at('2026-10-25T23:30:00Z'))
+        self.assertEqual(service.owned(self.db, 'medications', ident, self.user_id)['stock'], 7000)

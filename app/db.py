@@ -151,6 +151,12 @@ def align_daily_intervals(db, now, medication_ids=None):
         recorded = db.execute('SELECT 1 FROM doses WHERE medication_id=? AND scheduled_at>=? AND scheduled_at<? LIMIT 1',
                               (med['id'], int(midnight.timestamp()), int(tomorrow.timestamp()))).fetchone()
         cutoff = tomorrow if recorded else midnight
+        latest = db.execute('SELECT max(scheduled_at) FROM doses WHERE medication_id=? AND scheduled_at>=? AND (scheduled_at-?) % 86400=0',
+                            (med['id'], med['start_at'], med['start_at'])).fetchone()[0]
+        if latest is not None:
+            index = (latest - med['start_at']) // 86400
+            anchor = datetime.fromtimestamp(med['start_at'], tz).replace(hour=0, minute=0, second=0, microsecond=0)
+            cutoff = max(cutoff, anchor + timedelta(days=index+1))
         db.execute('UPDATE medications SET daily_from=? WHERE id=?', (int(cutoff.timestamp()), med['id']))
 
 

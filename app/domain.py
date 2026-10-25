@@ -163,18 +163,22 @@ def occurrences(med, after, before, limit=1000):
     daily_interval = med["schedule"] == "interval" and med["interval_hours"] == 24
     # El corte conserva la pauta antigua y sus registros anteriores a la actualización.
     daily_from = med["daily_from"] if "daily_from" in med.keys() else 0
+    tz = zone(med["timezone"])
+    anchor = datetime.fromtimestamp(med["start_at"], tz)
+    # Una toma antigua de las 00:30 puede haberse adelantado al día anterior.
+    # El corte corresponde al número de día de la pauta, no al instante desplazado.
+    legacy_until = (med["start_at"] + (datetime.fromtimestamp(daily_from, tz).date() - anchor.date()).days * 86400
+                    if daily_interval and daily_from else 0)
     result = []
-    if med["schedule"] == "interval" and (not daily_interval or after < daily_from):
+    if med["schedule"] == "interval" and (not daily_interval or after < legacy_until):
         step = int(med["interval_hours"] * 3600)
         first = med["start_at"] + max(0, (after - med["start_at"] + step - 1) // step) * step
-        end = min(before, daily_from - 1) if daily_interval else before
+        end = min(before, legacy_until - 1) if daily_interval else before
         result = list(range(first, min(end + 1, first + step * limit), step))
         if not daily_interval or before < daily_from or len(result) >= limit:
             return result
     if daily_interval:
         after = max(after, daily_from)
-    tz = zone(med["timezone"])
-    anchor = datetime.fromtimestamp(med["start_at"], tz)
     day = datetime.fromtimestamp(after, tz).date()
     last = datetime.fromtimestamp(before, tz).date()
     times = [anchor.strftime("%H:%M:%S")] if daily_interval else json.loads(med["times"])
