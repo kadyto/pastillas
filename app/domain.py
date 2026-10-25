@@ -152,7 +152,7 @@ def prescription_input(data):
 
 
 def occurrences(med, after, before, limit=1000):
-    """Intervalos = horas reales; horas fijas = reloj local (una vez por cambio DST)."""
+    """24 h = un día local; otros intervalos = horas reales; horas fijas = reloj local."""
     if not med["active"] or med["schedule"] == "as_needed" or before < med["start_at"]:
         return []
     after = max(after, med["start_at"])
@@ -160,21 +160,30 @@ def occurrences(med, after, before, limit=1000):
         before = min(before, med["end_at"])
     if after > before:
         return []
-    if med["schedule"] == "interval":
+    daily_interval = med["schedule"] == "interval" and med["interval_hours"] == 24
+    # El corte conserva la pauta antigua y sus registros anteriores a la actualización.
+    daily_from = med["daily_from"] if "daily_from" in med.keys() else 0
+    result = []
+    if med["schedule"] == "interval" and (not daily_interval or after < daily_from):
         step = int(med["interval_hours"] * 3600)
         first = med["start_at"] + max(0, (after - med["start_at"] + step - 1) // step) * step
-        return list(range(first, min(before + 1, first + step * limit), step))
+        end = min(before, daily_from - 1) if daily_interval else before
+        result = list(range(first, min(end + 1, first + step * limit), step))
+        if not daily_interval or before < daily_from or len(result) >= limit:
+            return result
+    if daily_interval:
+        after = max(after, daily_from)
     tz = zone(med["timezone"])
+    anchor = datetime.fromtimestamp(med["start_at"], tz)
     day = datetime.fromtimestamp(after, tz).date()
     last = datetime.fromtimestamp(before, tz).date()
-    result = []
-    times = json.loads(med["times"])
+    times = [anchor.strftime("%H:%M:%S")] if daily_interval else json.loads(med["times"])
     while day <= last and len(result) < limit:
         for clock in times:
-            hour, minute = map(int, clock.split(":"))
-            local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=tz)
+            hour, minute, *seconds = map(int, clock.split(":"))
+            local = datetime(day.year, day.month, day.day, hour, minute, seconds[0] if seconds else 0, tzinfo=tz)
             # Hora inexistente: se desplaza hacia delante al cambiar a horario de verano.
-            at = int(local.timestamp())
+            at = med["start_at"] if daily_interval and day == anchor.date() else int(local.timestamp())
             if after <= at <= before and at not in result:
                 result.append(at)
                 if len(result) >= limit:
@@ -186,7 +195,8 @@ def occurrences(med, after, before, limit=1000):
 def nth_occurrence(med, after, index):
     if not med["active"] or med["schedule"] == "as_needed":
         return None
-    if med["schedule"] == "interval":
+    daily_interval = med["schedule"] == "interval" and med["interval_hours"] == 24
+    if med["schedule"] == "interval" and not daily_interval:
         first = occurrences(med, after, after + 720 * 3600, 1)
         at = first[0] + int(med["interval_hours"] * 3600) * index if first else None
         if at is not None and at > 4133980799:  # 2100-12-31 UTC
@@ -196,7 +206,8 @@ def nth_occurrence(med, after, index):
     tz = zone(med["timezone"])
     day = datetime.fromtimestamp(max(after, med["start_at"]), tz).date()
     last_day = datetime.fromtimestamp(med["end_at"], tz).date() if med["end_at"] is not None else datetime(2100, 12, 31).date()
-    if index >= max(0, (last_day - day).days + 1) * len(json.loads(med["times"])):
+    max_per_day = 2 if daily_interval else len(json.loads(med["times"]))
+    if index >= max(0, (last_day - day).days + 1) * max_per_day:
         return None
     while day.year <= 2100:
         day_start = int(datetime.combine(day, datetime.min.time(), tz).timestamp())

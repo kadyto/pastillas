@@ -174,7 +174,7 @@ class AutomaticMigrationTests(unittest.TestCase):
             initialize(path)
             with connect(path) as db:
                 inventory.sync_due(db,NOW)
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],5)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
                 self.assertEqual(db.execute('SELECT stock FROM medications').fetchone()[0],40000)
                 self.assertEqual(db.execute('SELECT count(*) FROM doses').fetchone()[0],0)
                 self.assertEqual(db.execute('SELECT sum(amount) FROM stock_movements').fetchone()[0],40000)

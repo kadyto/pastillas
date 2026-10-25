@@ -68,6 +68,18 @@ tomas que ya se asumieron con el stock agotado.
 
 ## Actualizar una instalación existente
 
+Desde la versión 0.4.2, las pautas de 24 horas mantienen la hora local de la primera
+toma al cambiar entre verano e invierno. La actualización adapta las pautas ya
+guardadas y conserva su historial, sus existencias y los descuentos anteriores.
+Si el día de la actualización ya tiene una toma registrada o marcada como omitida,
+el nuevo horario empieza al día siguiente para evitar una segunda toma y un
+segundo descuento ese mismo día. Si aún no tiene registros, se aplica desde ese día.
+Las tomas anteriores a esa fecha conservan su horario original.
+
+Esta actualización utiliza el esquema 6 y crea previamente una copia consistente
+en `DATABASE_PATH.pre-v6.sqlite`. Los demás intervalos conservan su duración en
+horas transcurridas. Las horas fijas del día siguen utilizando el reloj local.
+
 La versión 0.3.0 migra al esquema 3 y guarda una copia consistente de la base
 anterior en `DATABASE_PATH.pre-v3.sqlite` antes de modificarla. Conserva cuentas,
 existencias, recetas, vínculos médicos, historial y sesiones.

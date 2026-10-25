@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from app import android_runtime as mobile, medicine_info, service
 from app.db import connect
-from app.domain import Invalid
+from app.domain import Invalid, timestamp
 
 
 class AndroidRuntimeTests(unittest.TestCase):
@@ -138,6 +138,26 @@ class AndroidRuntimeTests(unittest.TestCase):
         with connect() as db:
             self.assertEqual(db.execute('SELECT count(*) FROM medicine_links').fetchone()[0], 2)
             self.assertEqual(db.execute('SELECT count(*) FROM medicine_cache').fetchone()[0], 0)
+
+    def test_import_preserves_daily_clock_cutoff_and_adapts_older_copies(self):
+        today = timestamp('2026-10-25T22:40:00Z')
+        cutoff = timestamp('2026-10-25T23:00:00Z')
+        with patch('time.time', return_value=today):
+            ident = self.med(interval_hours=24, start_at='2026-10-24T21:30:00Z')
+            with connect() as db:
+                db.execute('UPDATE medications SET daily_from=? WHERE id=?', (cutoff, ident))
+                user = mobile.local_user(db)
+                service.record_dose(db, user['id'], ident, dict(scheduled_at=timestamp('2026-10-25T21:30:00Z')), today)
+            exported = json.loads(mobile.export_json())
+            mobile.import_json(json.dumps(exported))
+            self.assertEqual(self.call('GET', '/dashboard')['medications'][1]['daily_from'], cutoff)
+            del exported['medications'][0]['daily_from']
+            mobile.import_json(json.dumps(exported))
+            with connect() as db:
+                meds = db.execute('SELECT * FROM medications ORDER BY id').fetchall()
+                self.assertEqual([m['daily_from'] for m in meds], [cutoff, cutoff, cutoff])
+                self.assertEqual([m['stock'] for m in meds], [12000, 12000, 12000])
+            self.assertEqual(mobile.next_alarm(today), timestamp('2026-10-26T22:30:00Z'))
 
     def test_erase_requires_confirmation_and_removes_all_personal_records(self):
         self.med(schedule='as_needed')

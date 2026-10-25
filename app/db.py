@@ -2,7 +2,9 @@ import os
 import sqlite3
 import tempfile
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -34,7 +36,7 @@ CREATE TABLE IF NOT EXISTS medications (
  prescription_id INTEGER REFERENCES prescriptions(id) ON DELETE SET NULL,
  instructions TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
  auto_cursor INTEGER NOT NULL DEFAULT 0, stock_verified_at INTEGER,
- expiry_date TEXT
+ expiry_date TEXT, daily_from INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS doses (
  id INTEGER PRIMARY KEY, medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
@@ -138,6 +140,20 @@ def connect(path=None):
     return db
 
 
+def align_daily_intervals(db, now, medication_ids=None):
+    """Adopta días locales sin reescribir el historial ni repetir la toma de hoy."""
+    for med in db.execute("SELECT * FROM medications WHERE schedule='interval' AND interval_hours=24").fetchall():
+        if medication_ids is not None and med['id'] not in medication_ids:
+            continue
+        tz = ZoneInfo(med['timezone'])
+        midnight = datetime.fromtimestamp(now, tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = midnight + timedelta(days=1)
+        recorded = db.execute('SELECT 1 FROM doses WHERE medication_id=? AND scheduled_at>=? AND scheduled_at<? LIMIT 1',
+                              (med['id'], int(midnight.timestamp()), int(tomorrow.timestamp()))).fetchone()
+        cutoff = tomorrow if recorded else midnight
+        db.execute('UPDATE medications SET daily_from=? WHERE id=?', (int(cutoff.timestamp()), med['id']))
+
+
 def initialize(path=None):
     path = path or os.environ.get("DATABASE_PATH", "data/pastillas.sqlite")
     prepare_storage(path)
@@ -145,7 +161,7 @@ def initialize(path=None):
         with connect(path) as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 5:
+            if version > 6:
                 raise RuntimeError("La base de datos pertenece a una versión más reciente.")
             if version == 1 and str(path) != ':memory:':
                 # Copia consistente incluso con WAL, antes de la primera migración.
@@ -181,6 +197,15 @@ def initialize(path=None):
                     finally:
                         backup.close()
                     os.chmod(backup_path,0o600)
+            if version in (1,2,3,4,5) and str(path) != ':memory:':
+                backup_path = str(path) + '.pre-v6.sqlite'
+                if not Path(backup_path).exists():
+                    backup = sqlite3.connect(backup_path)
+                    try:
+                        db.backup(backup)
+                    finally:
+                        backup.close()
+                    os.chmod(backup_path, 0o600)
             db.executescript(SCHEMA)
             # ALTER conserva las tablas existentes, sus claves y todos los movimientos.
             db.execute('BEGIN IMMEDIATE')
@@ -200,6 +225,9 @@ def initialize(path=None):
             columns = {r[1] for r in db.execute('PRAGMA table_info(medications)')}
             if 'expiry_date' not in columns:
                 db.execute('ALTER TABLE medications ADD COLUMN expiry_date TEXT')
-            db.execute('PRAGMA user_version=5')
+            if 'daily_from' not in columns:
+                db.execute('ALTER TABLE medications ADD COLUMN daily_from INTEGER NOT NULL DEFAULT 0')
+                align_daily_intervals(db, int(time.time()))
+            db.execute('PRAGMA user_version=6')
     except sqlite3.OperationalError as error:
         raise StorageError(storage_message(path, str(error))) from error

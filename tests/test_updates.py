@@ -190,7 +190,7 @@ class VersionTests(unittest.TestCase):
         with connect(self.path) as db:
             self.assertEqual(dict(db.execute('SELECT * FROM medications').fetchone()), before)
             self.assertEqual(db.execute('SELECT count(*) FROM stock_movements').fetchone()[0], 1)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 5)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 6)
             self.assertEqual(updates.status(db)['state'], 'unchecked')
         with sqlite3.connect(self.path + '.pre-v5.sqlite') as backup:
             self.assertEqual(backup.execute('PRAGMA user_version').fetchone()[0], 4)

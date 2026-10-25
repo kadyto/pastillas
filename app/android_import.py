@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from . import domain, service
+from .db import align_daily_intervals
 
 
 def integer(value, label, low=0, high=10**12):
@@ -46,6 +47,7 @@ def import_data(db, user, raw, now=None):
             if not isinstance(data.get(table, []), list) or any(not isinstance(row, dict) for row in data.get(table, [])):
                 raise domain.Invalid('La estructura de la copia no es válida.')
         recipes, medications, doses = {}, {}, {}
+        legacy_daily = set()
         for row in data.get('prescriptions', []):
             old = integer(row.get('id'), 'Identificador', 1)
             if old in recipes:
@@ -67,10 +69,13 @@ def import_data(db, user, raw, now=None):
             fields.update(user_id=user['id'], stock=integer(row.get('stock'), 'Existencias'),
                           created_at=integer(row.get('created_at', now), 'Fecha', 946684800, 4133980799),
                           auto_cursor=min(integer(row.get('auto_cursor') or data.get('exported_at', now), 'Cursor'), now),
+                          daily_from=integer(row.get('daily_from', 0), 'Inicio de horario diario', 0, 4134067199),
                           stock_verified_at=row.get('stock_verified_at'))
             if fields['stock_verified_at'] is not None:
                 instant(fields['stock_verified_at'])
             medications[old] = service.insert(db, 'medications', fields)
+            if 'daily_from' not in row:
+                legacy_daily.add(medications[old])
         for row in data.get('doses', []):
             old = integer(row.get('id'), 'Toma', 1)
             if old in doses or row.get('medication_id') not in medications or row.get('status') not in ('taken', 'skipped'):
@@ -80,6 +85,7 @@ def import_data(db, user, raw, now=None):
                 scheduled_at=row['scheduled_at'], recorded_at=row['recorded_at'], status=row['status'],
                 amount=integer(row.get('amount'), 'Cantidad'), note=domain.text(row.get('note', ''), 'Nota', 4000),
                 automatic=flag(row.get('automatic', 0)), expected_amount=integer(row.get('expected_amount', row['amount']), 'Cantidad prevista')))
+        align_daily_intervals(db, now, legacy_daily)
         for row in data.get('stock_movements', []):
             if row.get('medication_id') not in medications or (row.get('dose_id') is not None and row['dose_id'] not in doses):
                 raise domain.Invalid('La copia contiene un movimiento sin medicamento o toma.')

@@ -82,6 +82,12 @@ La aplicación puede publicarse con un proxy inverso, incluido Nginx Proxy Manag
 
 Las pautas y cantidades deben corresponder al tratamiento indicado por el profesional sanitario. La concentración del envase es un dato informativo; la aplicación utiliza la cantidad y la unidad introducidas para calcular el consumo.
 
+### Horarios y cambio de hora
+
+Una pauta de **24 horas** equivale a una toma cada día a la hora local de la primera toma, en la zona horaria del medicamento. Por ejemplo, las 23:30 siguen siendo las 23:30 al cambiar entre verano e invierno; ese día pueden transcurrir 23 o 25 horas entre tomas. La agenda, los recordatorios y la previsión de stock utilizan ese mismo horario.
+
+Los demás intervalos, como 6, 8 o 12 horas, cuentan horas transcurridas desde la primera toma. Para indicar varias horas del reloj que deben mantenerse cada día, utiliza **A horas fijas cada día**.
+
 ### Cómo se calcula el stock
 
 Las tomas con horario se consideran realizadas cuando llega su hora y se descuentan automáticamente del inventario. Si se omite una toma, **No la tomé** devuelve su descuento al stock. Las tomas según necesidad se registran manualmente, porque su frecuencia depende del uso.

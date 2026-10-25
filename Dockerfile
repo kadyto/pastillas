@@ -4,7 +4,7 @@ ARG SOURCE_DIR=.
 LABEL org.opencontainers.image.title="Pastillas" \
       org.opencontainers.image.description="Medicamentos, tomas, recetas y existencias en tu servidor" \
       org.opencontainers.image.source="https://github.com/kadyto/pastillas" \
-      org.opencontainers.image.version="0.4.1"
+      org.opencontainers.image.version="0.4.2"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

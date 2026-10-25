@@ -71,7 +71,7 @@ class ExpiryMigrationTests(unittest.TestCase):
             initialize(path)
             initialize(path)
             with connect(path) as db:
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 5)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 6)
                 for table in tables:
                     after = [dict(row) for row in db.execute(f'SELECT * FROM {table}')]
                     if table == 'medications':
